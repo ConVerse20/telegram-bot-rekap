@@ -34,7 +34,7 @@ const PORT = process.env.PORT || 3000
 app.listen(PORT, async () => {
   console.log('🚀 Server jalan')
 
-  await bot.setWebHook(`${URL}/bot${TOKEN}`)
+  await bot.setWebHook(`${URL}/webhook`)
   console.log('✅ Webhook aktif')
 })
 
