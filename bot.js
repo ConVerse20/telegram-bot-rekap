@@ -25,11 +25,13 @@ app.use(express.json());
 
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
-  console.log('📩 KENA WEBHOOK');
-  console.log(JSON.stringify(req.body, null, 2));
-
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
+  res.sendStatus(200); // ⚡ balas duluan (penting!)
+  
+  try {
+    bot.processUpdate(req.body);
+  } catch (err) {
+    console.error('❌ Webhook error:', err.message);
+  }
 });
 
 app.listen(PORT, async () => {
