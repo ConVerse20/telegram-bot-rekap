@@ -29,18 +29,7 @@ app.get('/', (req, res) => res.send('BOT HIDUP'));
 app.get('/webhook', (req, res) => res.send('WEBHOOK OK'));
 
 // ================= WEBHOOK =================
-app.post('/webhook', (req, res) => {
-  console.log('📩 WEBHOOK HIT');
-  console.log('BODY:', JSON.stringify(req.body));
-
-  try {
-    bot.processUpdate(req.body);
-    res.sendStatus(200);
-  } catch (err) {
-    console.error('❌ Webhook error:', err);
-    res.sendStatus(500);
-  }
-});
+app.use(bot.webhookCallback('/webhook'));
 
 // ================= SET WEBHOOK =================
 async function initWebhook() {
