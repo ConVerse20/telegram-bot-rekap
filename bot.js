@@ -7,6 +7,12 @@ const cron = require('node-cron');
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 
+// ===== INIT EXPRESS (WAJIB DI ATAS) =====
+const app = express();
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
 // ===== CONFIG =====
 const TOKEN = process.env.TOKEN;
 const URL = 'https://telegram-bot-rekap-production.up.railway.app';
@@ -16,41 +22,8 @@ const ADMIN_GROUP = -1002498803166;
 
 const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
 
-// ===== INIT EXPRESS =====
-app.use(express.json({
-  limit: '10mb'
-}));
-
-app.use(express.urlencoded({
-  extended: true
-}));
-
 // ===== INIT BOT =====
-const bot = new TelegramBot(TOKEN, {
-  webHook: true
-});
-
-// ===== SET & CEK WEBHOOK (ANTI RESET) =====
-async function initWebhook() {
-  try {
-    console.log('🔄 SET WEBHOOK...');
-
-    const res = await bot.setWebHook(`${URL}/webhook`);
-    console.log('✅ SET WEBHOOK:', res);
-
-    const info = await bot.getWebHookInfo();
-    console.log('📡 WEBHOOK INFO:', info);
-
-    if (!info.url) {
-      console.log('⚠️ WEBHOOK MASIH KOSONG!');
-    }
-
-  } catch (err) {
-    console.error('❌ WEBHOOK ERROR:', err.message);
-  }
-}
-
-initWebhook();
+const bot = new TelegramBot(TOKEN, { webHook: true });
 
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
@@ -70,6 +43,21 @@ app.post('/webhook', (req, res) => {
     res.sendStatus(500);
   }
 });
+
+// ===== SET WEBHOOK =====
+async function initWebhook() {
+  try {
+    console.log('🔄 SET WEBHOOK...');
+
+    await bot.setWebHook(`${URL}/webhook`);
+
+    const info = await bot.getWebHookInfo();
+    console.log('📡 WEBHOOK INFO:', info);
+
+  } catch (err) {
+    console.error('❌ WEBHOOK ERROR:', err.message);
+  }
+}
 
 // ===== GOOGLE AUTH =====
 let credentials;
@@ -91,7 +79,7 @@ if (!fs.existsSync('foto')) {
   fs.mkdirSync('foto');
 }
 
-// ===== PARSER (ANTI GAGAL) =====
+// ===== PARSER =====
 function parseLaporan(text = '') {
   const clean = text.replace(/\r/g, '');
 
@@ -114,7 +102,7 @@ function parseLaporan(text = '') {
   };
 }
 
-// ===== SAVE TO SHEET =====
+// ===== SAVE SHEET =====
 async function saveToSheet(data) {
   try {
     const client = await auth.getClient();
@@ -156,13 +144,10 @@ bot.onText(/\/start/, (msg) => {
 bot.on('message', async (msg) => {
   try {
     if (!msg.text) return;
-
-    // ❗ skip command biar gak bentrok
     if (msg.text.startsWith('/')) return;
 
     console.log('📥 MASUK:', msg.text);
 
-    // ❗ filter user
     if (ALLOWED_USERS.length && !ALLOWED_USERS.includes(msg.from.id)) {
       console.log('⛔ USER TIDAK DIIZINKAN:', msg.from.id);
       return;
@@ -171,10 +156,7 @@ bot.on('message', async (msg) => {
     const data = parseLaporan(msg.text);
     console.log('📊 PARSED:', data);
 
-    if (!data.tiket) {
-      console.log('❌ TIKET TIDAK KEBACA');
-      return;
-    }
+    if (!data.tiket) return;
 
     await saveToSheet(data);
 
@@ -183,7 +165,6 @@ bot.on('message', async (msg) => {
     if (ADMIN_GROUP) {
       bot.sendMessage(ADMIN_GROUP, `
 📊 LAPORAN MASUK
-
 TIKET: ${data.tiket}
 STATUS: ${data.status}
 ODP: ${data.odp}
@@ -196,7 +177,7 @@ PETUGAS: ${data.petugas}
   }
 });
 
-// ===== HANDLE FOTO =====
+// ===== FOTO =====
 bot.on('photo', async (msg) => {
   try {
     const caption = msg.caption || '';
@@ -231,54 +212,14 @@ bot.on('photo', async (msg) => {
   }
 });
 
-// ===== REKAP HARIAN =====
-cron.schedule('0 17 * * *', async () => {
-  try {
-    const client = await auth.getClient();
-    const sheets = google.sheets({ version: 'v4', auth: client });
-
-    const result = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: 'Sheet1!A:J',
-    });
-
-    const rows = result.data.values?.slice(1) || [];
-    const today = moment().format('YYYY-MM-DD');
-
-    const rekap = {};
-
-    rows.forEach(r => {
-      if (!r[0] || !r[0].includes(today)) return;
-
-      const petugas = r[9];
-      if (!petugas) return;
-
-      if (!rekap[petugas]) rekap[petugas] = 0;
-      rekap[petugas]++;
-    });
-
-    let msg = '📅 REKAP HARI INI\n\n';
-
-    Object.entries(rekap).forEach(([nama, jumlah]) => {
-      msg += `${nama}: ${jumlah}\n`;
-    });
-
-    if (ADMIN_GROUP) {
-      bot.sendMessage(ADMIN_GROUP, msg);
-    }
-
-  } catch (err) {
-    console.error('❌ Error rekap:', err);
-  }
-}, {
-  timezone: "Asia/Jakarta"
-});
-
 // ===== START SERVER =====
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
   console.log('🚀 Server jalan di port', PORT);
+
+  // 🔥 PENTING: set webhook setelah server hidup
+  await initWebhook();
 });
 
 console.log('🚀 BOT SIAP FULL');
