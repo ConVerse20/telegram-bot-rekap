@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dashboard MCU</title>
+</head>
+<body>
+
+<h2>📊 DATA</h2>
+<table border="1" id="tabel"></table>
+
+<script>
+fetch('http://localhost:3000/data')
+.then(res => res.json())
+.then(data => {
+  let html = '<tr>';
+  Object.keys(data[0]).forEach(h => html += `<th>${h}</th>`);
+  html += '</tr>';
+
+  data.forEach(d => {
+    html += '<tr>';
+    Object.values(d).forEach(v => html += `<td>${v}</td>`);
+    html += '</tr>';
+  });
+
+  document.getElementById('tabel').innerHTML = html;
+});
+</script>
+
+</body>
+</html>
