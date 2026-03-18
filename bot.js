@@ -12,8 +12,8 @@ const TOKEN = process.env.TOKEN;
 const PORT = process.env.PORT || 3000;
 const URL = process.env.RAILWAY_STATIC_URL || 'https://telegram-bot-rekap-production.up.railway.app';
 
-const ALLOWED_USERS = [123456789]; // ganti ID kamu
-const ADMIN_GROUP = -100xxxxxxxxxx; // ganti ID grup
+const ALLOWED_USERS = [167474430,167474430,246759640,406752113,292115739,122882547,639241715,166577082,120002308,155299727,336877952,6862722575,601292992,114625129,129727898,785391351,123059157]; // ganti ID kamu
+const ADMIN_GROUP = -1002498803166; // ganti ID grup
 
 const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
 
