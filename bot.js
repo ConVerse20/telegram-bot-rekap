@@ -19,7 +19,9 @@ const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
 // ===== INIT EXPRESS =====
 const app = express();
 app.use(express.json());
-
+app.get('/', (req, res) => {
+  res.send('🚀 BOT AKTIF');
+});
 // ===== INIT BOT (WEBHOOK MODE) =====
 const bot = new TelegramBot(TOKEN, {
   webHook: true
