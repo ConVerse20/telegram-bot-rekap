@@ -7,12 +7,18 @@ const TOKEN = process.env.BOT_TOKEN;
 const PORT = process.env.PORT || 8080;
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
-// ===== INIT BOT =====
-const bot = new TelegramBot(TOKEN, { polling: true });
+// ===== INIT BOT (ANTI 409) =====
+const bot = new TelegramBot(TOKEN);
 
-// 🔥 WAJIB: hapus webhook biar gak 409
-bot.deleteWebHook().then(() => {
-  console.log('🧹 Webhook dihapus, pakai polling');
+// stop polling lama (kalau ada)
+bot.stopPolling().catch(() => {});
+
+// hapus webhook + reset session
+bot.deleteWebHook({ drop_pending_updates: true }).then(() => {
+  console.log('🧹 Webhook dihapus');
+
+  bot.startPolling();
+  console.log('🚀 BOT POLLING AKTIF');
 });
 
 // ===== EXPRESS =====
@@ -86,7 +92,7 @@ async function saveToSheet(data) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Sheet1!A:J',
+      range: 'Sheet1!A:J', // ⚠️ sesuaikan nama tab
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [[
@@ -106,7 +112,7 @@ async function saveToSheet(data) {
 
     console.log('📊 Masuk Google Sheet');
   } catch (err) {
-    console.error('❌ Error Sheet:', err.message);
+    console.error('❌ ERROR SHEET FULL:', err);
   }
 }
 
@@ -147,23 +153,19 @@ bot.on('message', async (msg) => {
 
     const parsed = parseMessage(msg.text);
 
-    // 🔥 skip kalau kosong semua
+    // skip kalau kosong semua
     if (isKosong(parsed)) {
       console.log('⛔ Kosong, skip');
       return;
     }
 
-    // simpan memory
     dataRekap.push(parsed);
 
-    // simpan ke sheet
     await saveToSheet(parsed);
 
     bot.sendMessage(msg.chat.id, '✅ Data tersimpan');
 
   } catch (err) {
-    console.error('❌ Error message:', err.message);
+    console.error('❌ ERROR MESSAGE:', err);
   }
 });
-
-console.log('🚀 BOT POLLING AKTIF');
