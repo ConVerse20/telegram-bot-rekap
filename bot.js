@@ -101,7 +101,7 @@ async function saveToSheet(data) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Sheet1!A:J',
+      range: 'DATA!A:J'
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [[
