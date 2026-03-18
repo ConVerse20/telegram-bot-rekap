@@ -17,12 +17,13 @@ const ADMIN_GROUP = -1002498803166;
 const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
 
 // ===== INIT EXPRESS =====
-const app = express();
-app.use(express.json());
+app.use(express.json({
+  limit: '10mb'
+}));
 
-app.get('/', (req, res) => {
-  res.send('🚀 BOT AKTIF');
-});
+app.use(express.urlencoded({
+  extended: true
+}));
 
 // ===== INIT BOT =====
 const bot = new TelegramBot(TOKEN, {
@@ -53,20 +54,21 @@ initWebhook();
 
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
-  try {
-    console.log('📩 UPDATE MASUK:', JSON.stringify(req.body));
+  console.log('🔥 RAW BODY:', req.body);
 
-    bot.processUpdate(req.body);
+  try {
+    if (!req.body || Object.keys(req.body).length === 0) {
+      console.log('❌ BODY KOSONG!');
+    } else {
+      console.log('📩 UPDATE MASUK');
+      bot.processUpdate(req.body);
+    }
 
     res.sendStatus(200);
   } catch (err) {
     console.error('❌ Webhook error:', err);
     res.sendStatus(500);
   }
-});
-
-bot.on('message', (msg) => {
-  console.log('📨 PESAN DITERIMA:', msg.text);
 });
 
 // ===== GOOGLE AUTH =====
