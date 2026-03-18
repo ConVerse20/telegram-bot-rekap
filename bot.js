@@ -5,39 +5,23 @@ const axios = require('axios');
 const fs = require('fs');
 const cron = require('node-cron');
 
-const TOKEN = '8682184665:AAGFO7Wztis-ETyXB0kr8sDf0_f-A8eBAH4';
-const ADMIN_GROUP = -167474430;
-const ALLOWED_USERS = [167474430,246759640,406752113,292115739,122882547,639241715,166577082,120002308,155299727,336877952,6862722575,601292992,114625129,129727898,785391351,123059157];
-
-const TelegramBot = require('node-telegram-bot-api')
-const express = require('express')
-const URL = process.env.RAILWAY_STATIC_URL || 'https://telegram-bot-rekap-production.up.railway.app'
+const TOKEN = process.env.TOKEN
 
 const bot = new TelegramBot(TOKEN, { webHook: true })
 const app = express()
 
 app.use(express.json())
 
-// webhook endpoint
-app.post(`/bot${TOKEN}`, (req, res) => {
+app.post('/webhook', (req, res) => {
   bot.processUpdate(req.body)
   res.sendStatus(200)
 })
 
-// test respon
-bot.on('message', (msg) => {
-  bot.sendMessage(msg.chat.id, '🔥 BOT WEBHOOK AKTIF')
-})
-
-const PORT = process.env.PORT || 3000
-
 app.listen(PORT, async () => {
   console.log('🚀 Server jalan')
-
   await bot.setWebHook(`${URL}/webhook`)
   console.log('✅ Webhook aktif')
 })
-
 // ===== GOOGLE =====
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
