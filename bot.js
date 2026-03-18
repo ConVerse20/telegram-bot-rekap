@@ -2,7 +2,6 @@ const { google } = require('googleapis');
 const moment = require('moment');
 const axios = require('axios');
 const fs = require('fs');
-const cron = require('node-cron');
 
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
@@ -10,26 +9,36 @@ const express = require('express');
 // ================= INIT EXPRESS =================
 const app = express();
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 // ================= CONFIG =================
 const TOKEN = process.env.TOKEN;
 const URL = 'https://telegram-bot-rekap-production.up.railway.app';
 
-const ALLOWED_USERS = [167474430,246759640,406752113,292115739,122882547,639241715,166577082,120002308,155299727,336877952,6862722575,601292992,114625129,129727898,785391351,123059157];
-const ADMIN_GROUP = -1002498803166;
-
-const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
-
-// ================= BOT =================
 const bot = new TelegramBot(TOKEN, { polling: false });
 
-// ================= ROUTE TEST =================
+// ================= TEST ROUTE =================
 app.get('/', (req, res) => res.send('BOT HIDUP'));
 app.get('/webhook', (req, res) => res.send('WEBHOOK OK'));
 
 // ================= WEBHOOK =================
-app.use(bot.webhookCallback('/webhook'));
+app.post('/webhook', (req, res) => {
+  console.log('📩 WEBHOOK MASUK');
+
+  try {
+    bot.processUpdate(req.body);
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('❌ ERROR WEBHOOK:', err);
+    res.sendStatus(500);
+  }
+});
+
+// ================= DEBUG EVENT =================
+bot.on('message', (msg) => {
+  console.log('📨 PESAN MASUK:', msg.text);
+
+  bot.sendMessage(msg.chat.id, 'BOT SUDAH RESPON ✅');
+});
 
 // ================= SET WEBHOOK =================
 async function initWebhook() {
@@ -50,133 +59,10 @@ async function initWebhook() {
   }
 }
 
-// ================= GOOGLE AUTH =================
-let credentials;
-
-try {
-  credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-  credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
-} catch (err) {
-  console.error('❌ GOOGLE_CREDENTIALS ERROR:', err.message);
-}
-
-const auth = new google.auth.GoogleAuth({
-  credentials,
-  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-});
-
-// ================= FOLDER FOTO =================
-if (!fs.existsSync('foto')) {
-  fs.mkdirSync('foto');
-}
-
-// ================= PARSER =================
-function parseLaporan(text = '') {
-  const clean = text.replace(/\r/g, '');
-
-  const get = (label) => {
-    const regex = new RegExp(`[-•]?\\s*${label}\\s*:\\s*(.+)`, 'i');
-    const match = clean.match(regex);
-    return match ? match[1].trim() : '';
-  };
-
-  return {
-    status: get('STATUS'),
-    tiket: get('NO TIKET'),
-    inet: get('INET/TLP'),
-    cp: get('CP PELANGGAN'),
-    penyebab: get('PENYEBAB GANGGUAN'),
-    perbaikan: get('LANGKAH PERBAIKAN'),
-    alamat: get('ALAMAT LENGKAP'),
-    odp: get('NAMA ODP'),
-    petugas: get('PETUGAS'),
-  };
-}
-
-// ================= SAVE SHEET =================
-async function saveToSheet(data) {
-  try {
-    const client = await auth.getClient();
-    const sheets = google.sheets({ version: 'v4', auth: client });
-
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID,
-      range: 'Sheet1!A:J',
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [[
-          moment().format('YYYY-MM-DD HH:mm:ss'),
-          data.status,
-          data.tiket,
-          data.inet,
-          data.cp,
-          data.penyebab,
-          data.perbaikan,
-          data.alamat,
-          data.odp,
-          data.petugas
-        ]]
-      }
-    });
-
-    console.log('✅ Masuk sheet');
-
-  } catch (err) {
-    console.error('❌ Error sheet:', err.message);
-  }
-}
-
-// ================= COMMAND =================
-bot.onText(/\/start/, (msg) => {
-  console.log('📥 /start dari:', msg.from.id);
-  bot.sendMessage(msg.chat.id, '🤖 BOT AKTIF 🔥');
-});
-
-// ================= HANDLE TEXT =================
-bot.on('message', async (msg) => {
-  try {
-    if (!msg.text) return;
-    if (msg.text.startsWith('/')) return;
-
-    console.log('📥 MASUK:', msg.text);
-
-    if (ALLOWED_USERS.length && !ALLOWED_USERS.includes(msg.from.id)) {
-      console.log('⛔ USER TIDAK DIIZINKAN:', msg.from.id);
-      return;
-    }
-
-    const data = parseLaporan(msg.text);
-    console.log('📊 PARSED:', data);
-
-    if (!data.tiket) return;
-
-    await saveToSheet(data);
-
-    await bot.sendMessage(msg.chat.id, '✅ Tersimpan');
-
-    if (ADMIN_GROUP) {
-      await bot.sendMessage(ADMIN_GROUP, `
-📊 LAPORAN MASUK
-TIKET: ${data.tiket}
-STATUS: ${data.status}
-ODP: ${data.odp}
-PETUGAS: ${data.petugas}
-`);
-    }
-
-  } catch (err) {
-    console.error('❌ Error message:', err);
-  }
-});
-
 // ================= START SERVER =================
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, async () => {
   console.log('🚀 Server jalan di port', PORT);
-
-  // WAJIB setelah server hidup
   await initWebhook();
 });
-
-console.log('🚀 BOT SIAP FULL');
