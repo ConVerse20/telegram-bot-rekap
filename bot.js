@@ -1,3 +1,11 @@
+app.get('/', (req, res) => {
+  res.send('BOT HIDUP');
+});
+
+app.get('/webhook', (req, res) => {
+  res.send('WEBHOOK READY');
+});
+
 const { google } = require('googleapis');
 const moment = require('moment');
 const axios = require('axios');
