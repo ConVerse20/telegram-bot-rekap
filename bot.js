@@ -30,8 +30,8 @@ const bot = new TelegramBot(TOKEN, {
 bot.setWebHook(`${URL}/webhook`);
 
 // ===== ROOT (WAJIB BUAT RAILWAY) =====
-app.get('/', (req, res) => {
-  res.send('OK');
+app.get('/health', (req, res) => {
+  res.send('healthy');
 });
 
 // ===== WEBHOOK =====
