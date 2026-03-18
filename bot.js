@@ -1,11 +1,3 @@
-app.get('/', (req, res) => {
-  res.send('BOT HIDUP');
-});
-
-app.get('/webhook', (req, res) => {
-  res.send('WEBHOOK READY');
-});
-
 const { google } = require('googleapis');
 const moment = require('moment');
 const axios = require('axios');
@@ -15,13 +7,13 @@ const cron = require('node-cron');
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 
-// ===== INIT EXPRESS (WAJIB DI ATAS) =====
+// ================= INIT EXPRESS =================
 const app = express();
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ===== CONFIG =====
+// ================= CONFIG =================
 const TOKEN = process.env.TOKEN;
 const URL = 'https://telegram-bot-rekap-production.up.railway.app';
 
@@ -30,21 +22,25 @@ const ADMIN_GROUP = -1002498803166;
 
 const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
 
-// ===== INIT BOT =====
-const bot = new TelegramBot(TOKEN, { webHook: true });
+// ================= BOT =================
+const bot = new TelegramBot(TOKEN);
 
-// ===== WEBHOOK =====
+// ================= DEBUG ROUTE =================
+app.get('/', (req, res) => {
+  res.send('BOT HIDUP');
+});
+
+app.get('/webhook', (req, res) => {
+  res.send('WEBHOOK OK');
+});
+
+// ================= WEBHOOK =================
 app.post('/webhook', (req, res) => {
-  console.log('🔥 RAW BODY:', req.body);
+  console.log('📩 WEBHOOK HIT');
+  console.log('BODY:', JSON.stringify(req.body));
 
   try {
-    if (!req.body || Object.keys(req.body).length === 0) {
-      console.log('❌ BODY KOSONG!');
-    } else {
-      console.log('📩 UPDATE MASUK');
-      bot.processUpdate(req.body);
-    }
-
+    bot.processUpdate(req.body);
     res.sendStatus(200);
   } catch (err) {
     console.error('❌ Webhook error:', err);
@@ -52,11 +48,13 @@ app.post('/webhook', (req, res) => {
   }
 });
 
-// ===== SET WEBHOOK =====
+// ================= SET WEBHOOK =================
 async function initWebhook() {
   try {
-    console.log('🔄 SET WEBHOOK...');
+    console.log('🔄 RESET WEBHOOK...');
+    await bot.deleteWebHook();
 
+    console.log('🔄 SET WEBHOOK...');
     await bot.setWebHook(`${URL}/webhook`);
 
     const info = await bot.getWebHookInfo();
@@ -67,7 +65,7 @@ async function initWebhook() {
   }
 }
 
-// ===== GOOGLE AUTH =====
+// ================= GOOGLE AUTH =================
 let credentials;
 
 try {
@@ -82,12 +80,12 @@ const auth = new google.auth.GoogleAuth({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-// ===== FOLDER FOTO =====
+// ================= FOLDER FOTO =================
 if (!fs.existsSync('foto')) {
   fs.mkdirSync('foto');
 }
 
-// ===== PARSER =====
+// ================= PARSER =================
 function parseLaporan(text = '') {
   const clean = text.replace(/\r/g, '');
 
@@ -110,7 +108,7 @@ function parseLaporan(text = '') {
   };
 }
 
-// ===== SAVE SHEET =====
+// ================= SAVE SHEET =================
 async function saveToSheet(data) {
   try {
     const client = await auth.getClient();
@@ -143,12 +141,13 @@ async function saveToSheet(data) {
   }
 }
 
-// ===== COMMAND =====
+// ================= COMMAND =================
 bot.onText(/\/start/, (msg) => {
+  console.log('📥 /start dari:', msg.from.id);
   bot.sendMessage(msg.chat.id, '🤖 BOT AKTIF 🔥');
 });
 
-// ===== HANDLE TEXT =====
+// ================= HANDLE TEXT =================
 bot.on('message', async (msg) => {
   try {
     if (!msg.text) return;
@@ -168,10 +167,10 @@ bot.on('message', async (msg) => {
 
     await saveToSheet(data);
 
-    bot.sendMessage(msg.chat.id, '✅ Tersimpan');
+    await bot.sendMessage(msg.chat.id, '✅ Tersimpan');
 
     if (ADMIN_GROUP) {
-      bot.sendMessage(ADMIN_GROUP, `
+      await bot.sendMessage(ADMIN_GROUP, `
 📊 LAPORAN MASUK
 TIKET: ${data.tiket}
 STATUS: ${data.status}
@@ -185,48 +184,13 @@ PETUGAS: ${data.petugas}
   }
 });
 
-// ===== FOTO =====
-bot.on('photo', async (msg) => {
-  try {
-    const caption = msg.caption || '';
-    const data = parseLaporan(caption);
-
-    if (!data.tiket) {
-      return bot.sendMessage(msg.chat.id, '❌ Caption wajib ada NO TIKET');
-    }
-
-    const fileId = msg.photo[msg.photo.length - 1].file_id;
-    const file = await bot.getFile(fileId);
-
-    const url = `https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`;
-    const fileName = `foto/${Date.now()}_${data.tiket}.jpg`;
-
-    const res = await axios.get(url, { responseType: 'stream' });
-    const writer = fs.createWriteStream(fileName);
-
-    res.data.pipe(writer);
-
-    await new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
-
-    await saveToSheet(data);
-
-    bot.sendMessage(msg.chat.id, '📸 Foto & data tersimpan');
-
-  } catch (err) {
-    console.error('❌ Error foto:', err);
-  }
-});
-
-// ===== START SERVER =====
+// ================= START SERVER =================
 const PORT = process.env.PORT || 8080;
 
-app.listen(PORT, '0.0.0.0', async () => {
+app.listen(PORT, async () => {
   console.log('🚀 Server jalan di port', PORT);
 
-  // 🔥 PENTING: set webhook setelah server hidup
+  // penting: set webhook setelah server hidup
   await initWebhook();
 });
 
