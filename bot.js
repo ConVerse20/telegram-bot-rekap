@@ -17,20 +17,22 @@ const ADMIN_GROUP = -1002498803166;
 
 const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
 
-// ===== INIT =====
-const bot = new TelegramBot(TOKEN);
+// ===== INIT EXPRESS =====
 const app = express();
-
 app.use(express.json());
+
+// ===== INIT BOT (WEBHOOK MODE) =====
+const bot = new TelegramBot(TOKEN, {
+  webHook: true
+});
+
+// set webhook ke railway
+bot.setWebHook(`${URL}/webhook`);
 
 // ===== ROOT (WAJIB BUAT RAILWAY) =====
 app.get('/', (req, res) => {
   res.send('OK');
 });
-
-// ===== GLOBAL ERROR =====
-process.on('uncaughtException', console.error);
-process.on('unhandledRejection', console.error);
 
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
@@ -44,12 +46,6 @@ app.post('/webhook', (req, res) => {
   }
 });
 
-// ===== START SERVER =====
-app.listen(PORT, () => {
-  console.log('🚀 Server jalan di port', PORT);
-  console.log('🌐 Webhook:', `${URL}/webhook`);
-});
-
 // ===== GOOGLE AUTH =====
 let credentials;
 
@@ -60,6 +56,7 @@ try {
 
   credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+
 } catch (err) {
   console.error('❌ GOOGLE_CREDENTIALS ERROR:', err.message);
 }
@@ -95,7 +92,7 @@ function parseLaporan(text = '') {
   };
 }
 
-// ===== SAVE SHEET =====
+// ===== SAVE TO SHEET =====
 async function saveToSheet(data) {
   try {
     const client = await auth.getClient();
@@ -240,6 +237,12 @@ cron.schedule('0 17 * * *', async () => {
   }
 }, {
   timezone: "Asia/Jakarta"
+});
+
+// ===== START SERVER =====
+app.listen(PORT, () => {
+  console.log('🚀 Server jalan di port', PORT);
+  console.log('🌐 Webhook:', `${URL}/webhook`);
 });
 
 console.log('🚀 BOT SIAP FULL');
