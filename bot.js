@@ -1,49 +1,69 @@
-process.env.NTBA_FIX_350 = 1;
+const { google } = require('googleapis');
+const moment = require('moment');
+const axios = require('axios');
+const fs = require('fs');
+const cron = require('node-cron');
 
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
-const { google } = require('googleapis');
 
 // ===== CONFIG =====
-const TOKEN = process.env.BOT_TOKEN;
+const TOKEN = process.env.TOKEN;
 const PORT = process.env.PORT || 8080;
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
-const BASE_URL = process.env.BASE_URL;
 
-const bot = new TelegramBot(TOKEN);
+// 🔥 HARDCODE BIAR GAK ERROR ENV
+const URL = 'https://telegram-bot-rekap-production.up.railway.app';
+
+const ADMIN_GROUP = null; // isi kalau perlu
+
+const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
+
+// ===== INIT =====
+const bot = new TelegramBot(TOKEN, { webHook: true });
 const app = express();
 
 app.use(express.json());
 
-// ===== WEBHOOK SETUP =====
-const webhookPath = `/bot${TOKEN}`;
-const webhookUrl = `${BASE_URL}${webhookPath}`;
+// ===== GLOBAL ERROR =====
+process.on('uncaughtException', console.error);
+process.on('unhandledRejection', console.error);
 
-bot.setWebHook(webhookUrl).then(() => {
-  console.log('🌐 Webhook aktif:', webhookUrl);
-});
-
-// endpoint webhook
-app.post(webhookPath, (req, res) => {
-  bot.processUpdate(req.body);
+// ===== WEBHOOK =====
+app.post('/webhook', (req, res) => {
   res.sendStatus(200);
+
+  try {
+    console.log('📩 UPDATE MASUK');
+    bot.processUpdate(req.body);
+  } catch (err) {
+    console.error('❌ Webhook error:', err);
+  }
 });
 
-// ===== EXPRESS =====
-app.get('/', (req, res) => {
-  res.send('Bot webhook aktif 🚀');
-});
+// ===== START SERVER =====
+app.listen(PORT, async () => {
+  console.log('🌐 Server hidup di port', PORT);
 
-app.listen(PORT, () => {
-  console.log(`🌐 Server hidup di port ${PORT}`);
+  const webhookUrl = `${URL}/webhook`;
+  console.log('🌐 Set webhook:', webhookUrl);
+
+  try {
+    await bot.deleteWebHook();
+    await bot.setWebHook(webhookUrl);
+    console.log('✅ Webhook aktif');
+  } catch (err) {
+    console.error('❌ Gagal webhook:', err);
+  }
 });
 
 // ===== GOOGLE AUTH =====
 let credentials;
+
 try {
-  credentials = JSON.parse(process.env.GSHEET_CREDENTIALS);
+  credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+  credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
 } catch (err) {
-  console.error('❌ GSHEET_CREDENTIALS error:', err.message);
+  console.error('❌ GOOGLE_CREDENTIALS ERROR:', err);
 }
 
 const auth = new google.auth.GoogleAuth({
@@ -51,103 +71,156 @@ const auth = new google.auth.GoogleAuth({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-const sheets = google.sheets({ version: 'v4', auth });
-
-// ===== STORAGE =====
-let dataRekap = [];
-
 // ===== PARSER =====
-function parseMessage(text) {
-  const fields = {
-    status: '',
-    tiket: '',
-    inet: '',
-    cp: '',
-    gangguan: '',
-    perbaikan: '',
-    alamat: '',
-    odp: '',
-    petugas: ''
+function parseLaporan(text = '') {
+  const get = (label) => {
+    const regex = new RegExp(`${label}\\s*:\\s*(.*)`, 'i');
+    const match = text.match(regex);
+    return match ? match[1].trim() : '';
   };
 
-  const lines = text.split('\n');
-
-  lines.forEach(line => {
-    const val = line.split(':')[1]?.trim() || '';
-
-    if (/STATUS/i.test(line)) fields.status = val;
-    if (/NO TIKET/i.test(line)) fields.tiket = val;
-    if (/INET\/TLP/i.test(line)) fields.inet = val;
-    if (/CP PELANGGAN/i.test(line)) fields.cp = val;
-    if (/PENYEBAB/i.test(line)) fields.gangguan = val;
-    if (/LANGKAH/i.test(line)) fields.perbaikan = val;
-    if (/ALAMAT/i.test(line)) fields.alamat = val;
-    if (/ODP/i.test(line)) fields.odp = val;
-    if (/PETUGAS/i.test(line)) fields.petugas = val;
-  });
-
-  return fields;
+  return {
+    status: get('STATUS'),
+    tiket: get('NO TIKET'),
+    inet: get('INET/TLP'),
+    cp: get('CP PELANGGAN'),
+    penyebab: get('PENYEBAB GANGGUAN'),
+    perbaikan: get('LANGKAH PERBAIKAN'),
+    alamat: get('ALAMAT LENGKAP'),
+    odp: get('NAMA ODP'),
+    petugas: get('PETUGAS'),
+  };
 }
 
-// ===== VALIDASI =====
-function isKosong(data) {
-  return Object.values(data).every(v => v === '');
-}
-
-// ===== SAVE TO SHEET =====
+// ===== SAVE KE SHEET =====
 async function saveToSheet(data) {
   try {
-    const now = new Date().toLocaleString('id-ID');
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: 'v4', auth: client });
 
     await sheets.spreadsheets.values.append({
-  spreadsheetId: SHEET_ID,
-  range: 'DATA!A:J', // ✅ ada koma
-  valueInputOption: 'USER_ENTERED',
-  requestBody: {
-    values: [[
-      moment().format('YYYY-MM-DD HH:mm:ss'),
-      data.status,
-      data.tiket,
-      data.inet,
-      data.cp,
-      data.penyebab,
-      data.perbaikan,
-      data.alamat,
-      data.odp,
-      data.petugas
-    ]]
-  }
-});
+      spreadsheetId: SHEET_ID,
+      range: 'DATA!A:J', // 🔥 PENTING (sesuai sheet lu)
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[
+          moment().format('YYYY-MM-DD HH:mm:ss'),
+          data.status,
+          data.tiket,
+          data.inet,
+          data.cp,
+          data.penyebab,
+          data.perbaikan,
+          data.alamat,
+          data.odp,
+          data.petugas
+        ]]
+      }
+    });
 
-    console.log('📊 Masuk Google Sheet');
+    console.log('✅ BERHASIL MASUK SHEET');
+
   } catch (err) {
     console.error('❌ ERROR SHEET:', err.message);
+    throw err;
   }
 }
 
-// ===== COMMAND =====
+// ===== START COMMAND =====
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, '🤖 BOT WEBHOOK AKTIF 🔥');
+  bot.sendMessage(msg.chat.id, '🤖 BOT AKTIF 🔥');
 });
 
+// ===== HANDLE TEXT =====
 bot.on('message', async (msg) => {
   try {
     if (!msg.text) return;
-    if (msg.text.startsWith('/')) return;
 
-    console.log('📨 MASUK:', msg.text);
+    const data = parseLaporan(msg.text);
 
-    const parsed = parseMessage(msg.text);
+    if (!data.tiket) return;
 
-    if (isKosong(parsed)) return;
+    await saveToSheet(data);
 
-    dataRekap.push(parsed);
+    bot.sendMessage(msg.chat.id, '✅ Data masuk Google Sheet');
 
-    await saveToSheet(parsed);
+    if (ADMIN_GROUP) {
+      bot.sendMessage(ADMIN_GROUP, `
+📊 LAPORAN MASUK
 
-    bot.sendMessage(msg.chat.id, '✅ Data tersimpan');
+TIKET: ${data.tiket}
+STATUS: ${data.status}
+ODP: ${data.odp}
+PETUGAS: ${data.petugas}
+`);
+    }
 
   } catch (err) {
-    console.error('❌ ERROR MESSAGE:', err.message);
+    console.error('❌ ERROR MESSAGE:', err);
+    bot.sendMessage(msg.chat.id, '❌ Gagal simpan ke sheet');
   }
 });
+
+// ===== FOTO (OPSIONAL) =====
+bot.on('photo', async (msg) => {
+  try {
+    const caption = msg.caption || '';
+    const data = parseLaporan(caption);
+
+    if (!data.tiket) {
+      return bot.sendMessage(msg.chat.id, '❌ Caption wajib ada NO TIKET');
+    }
+
+    await saveToSheet(data);
+
+    bot.sendMessage(msg.chat.id, '📸 Foto + data tersimpan');
+
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+// ===== REKAP =====
+cron.schedule('0 17 * * *', async () => {
+  try {
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: 'v4', auth: client });
+
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'DATA!A:J',
+    });
+
+    const rows = result.data.values?.slice(1) || [];
+    const today = moment().format('YYYY-MM-DD');
+
+    const rekap = {};
+
+    rows.forEach(r => {
+      if (!r[0] || !r[0].includes(today)) return;
+
+      const petugas = r[9];
+      if (!petugas) return;
+
+      if (!rekap[petugas]) rekap[petugas] = 0;
+      rekap[petugas]++;
+    });
+
+    let msg = '📅 REKAP HARI INI\n\n';
+
+    Object.entries(rekap).forEach(([nama, jumlah]) => {
+      msg += `${nama}: ${jumlah}\n`;
+    });
+
+    if (ADMIN_GROUP) {
+      bot.sendMessage(ADMIN_GROUP, msg);
+    }
+
+  } catch (err) {
+    console.error('❌ ERROR REKAP:', err);
+  }
+}, {
+  timezone: "Asia/Jakarta"
+});
+
+console.log('🚀 BOT SIAP FULL');
