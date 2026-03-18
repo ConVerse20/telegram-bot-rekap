@@ -25,6 +25,9 @@ app.use(express.json());
 
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
+  console.log('📩 KENA WEBHOOK');
+  console.log(JSON.stringify(req.body, null, 2));
+
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
