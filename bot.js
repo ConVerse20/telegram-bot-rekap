@@ -10,10 +10,10 @@ const express = require('express');
 // ===== CONFIG =====
 const TOKEN = process.env.TOKEN;
 const PORT = process.env.PORT || 3000;
-const URL = process.env.RAILWAY_STATIC_URL || 'https://telegram-bot-rekap-production.up.railway.app';
+const URL = process.env.RAILWAY_STATIC_URL;
 
-const ALLOWED_USERS = [167474430,246759640,406752113,292115739,122882547,639241715,166577082,120002308,155299727,336877952,6862722575,601292992,114625129,129727898,785391351,123059157]; // ganti ID kamu
-const ADMIN_GROUP = -1002498803166; // ganti ID grup
+const ALLOWED_USERS = []; // kosongkan dulu biar semua bisa akses
+const ADMIN_GROUP = -100xxxxxxxxxx; // isi nanti
 
 const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
 
@@ -23,33 +23,54 @@ const app = express();
 
 app.use(express.json());
 
+// ===== GLOBAL ERROR =====
+process.on('uncaughtException', console.error);
+process.on('unhandledRejection', console.error);
+
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
-  res.sendStatus(200); // ⚡ balas duluan (penting!)
-  
+  res.sendStatus(200); // ⚡ WAJIB cepat
+
   try {
+    console.log('📩 UPDATE MASUK');
     bot.processUpdate(req.body);
   } catch (err) {
-    console.error('❌ Webhook error:', err.message);
+    console.error('❌ Webhook error:', err);
   }
 });
 
+// ===== START SERVER =====
 app.listen(PORT, async () => {
   console.log('🚀 Server jalan di port', PORT);
 
-  console.log('Webhook URL:', `${URL}/webhook`);
-  await bot.setWebHook(`${URL}/webhook`);
+  const webhookUrl = `${URL}/webhook`;
+  console.log('🌐 Webhook:', webhookUrl);
 
-  console.log('✅ Webhook aktif');
+  try {
+    await bot.deleteWebHook();
+    await bot.setWebHook(webhookUrl);
+    console.log('✅ Webhook aktif');
+  } catch (err) {
+    console.error('❌ Gagal set webhook:', err);
+  }
 });
 
 // ===== GOOGLE AUTH =====
+let credentials;
+
+try {
+  credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+  credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+} catch (err) {
+  console.error('❌ GOOGLE_CREDENTIALS ERROR:', err);
+}
+
 const auth = new google.auth.GoogleAuth({
-  credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
+  credentials,
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-// ===== PASTIKAN FOLDER FOTO ADA =====
+// ===== FOLDER FOTO =====
 if (!fs.existsSync('foto')) {
   fs.mkdirSync('foto');
 }
@@ -75,7 +96,7 @@ function parseLaporan(text = '') {
   };
 }
 
-// ===== SAVE KE SHEET =====
+// ===== SAVE SHEET =====
 async function saveToSheet(data) {
   try {
     const client = await auth.getClient();
@@ -101,28 +122,36 @@ async function saveToSheet(data) {
       }
     });
 
+    console.log('✅ Masuk sheet');
+
   } catch (err) {
-    console.error('❌ Error save sheet:', err.message);
+    console.error('❌ Error sheet:', err.message);
   }
 }
+
+// ===== COMMAND START =====
+bot.onText(/\/start/, (msg) => {
+  console.log('START dari:', msg.from.id);
+  bot.sendMessage(msg.chat.id, '🤖 BOT AKTIF 🔥');
+});
 
 // ===== HANDLE TEXT =====
 bot.on('message', async (msg) => {
   try {
     if (!msg.text) return;
-    if (!ALLOWED_USERS.includes(msg.from.id)) return;
+
+    if (ALLOWED_USERS.length && !ALLOWED_USERS.includes(msg.from.id)) return;
 
     const data = parseLaporan(msg.text);
 
-    if (!data.tiket) {
-      return bot.sendMessage(msg.chat.id, '❌ Format salah / NO TIKET tidak ada');
-    }
+    if (!data.tiket) return;
 
     await saveToSheet(data);
 
-    await bot.sendMessage(msg.chat.id, '✅ Tersimpan');
+    bot.sendMessage(msg.chat.id, '✅ Tersimpan');
 
-    await bot.sendMessage(ADMIN_GROUP, `
+    if (ADMIN_GROUP) {
+      bot.sendMessage(ADMIN_GROUP, `
 📊 LAPORAN MASUK
 
 TIKET: ${data.tiket}
@@ -130,17 +159,16 @@ STATUS: ${data.status}
 ODP: ${data.odp}
 PETUGAS: ${data.petugas}
 `);
+    }
 
   } catch (err) {
-    console.error('❌ Error message:', err.message);
+    console.error('❌ Error message:', err);
   }
 });
 
 // ===== HANDLE FOTO =====
 bot.on('photo', async (msg) => {
   try {
-    if (!ALLOWED_USERS.includes(msg.from.id)) return;
-
     const caption = msg.caption || '';
     const data = parseLaporan(caption);
 
@@ -166,10 +194,10 @@ bot.on('photo', async (msg) => {
 
     await saveToSheet(data);
 
-    await bot.sendMessage(msg.chat.id, '📸 Foto & data tersimpan');
+    bot.sendMessage(msg.chat.id, '📸 Foto & data tersimpan');
 
   } catch (err) {
-    console.error('❌ Error foto:', err.message);
+    console.error('❌ Error foto:', err);
   }
 });
 
@@ -205,13 +233,15 @@ cron.schedule('0 17 * * *', async () => {
       msg += `${nama}: ${jumlah}\n`;
     });
 
-    await bot.sendMessage(ADMIN_GROUP, msg);
+    if (ADMIN_GROUP) {
+      bot.sendMessage(ADMIN_GROUP, msg);
+    }
 
   } catch (err) {
-    console.error('❌ Error rekap:', err.message);
+    console.error('❌ Error rekap:', err);
   }
 }, {
   timezone: "Asia/Jakarta"
 });
 
-console.log('🚀 BOT MCU SIAP');
+console.log('🚀 BOT SIAP FULL');
