@@ -38,6 +38,15 @@ const bot = new TelegramBot(TOKEN, {
   }
 })();
 
+(async () => {
+  try {
+    const info = await bot.getWebHookInfo();
+    console.log('📡 WEBHOOK INFO:', info);
+  } catch (err) {
+    console.error('❌ CEK WEBHOOK ERROR:', err.message);
+  }
+})();
+
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
   res.sendStatus(200);
