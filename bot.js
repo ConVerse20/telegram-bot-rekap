@@ -12,8 +12,8 @@ const TOKEN = process.env.TOKEN;
 const PORT = process.env.PORT || 3000;
 const URL = process.env.RAILWAY_STATIC_URL;
 
-const ALLOWED_USERS = []; // kosongkan dulu biar semua bisa akses
-const ADMIN_GROUP = -100xxxxxxxxxx; // isi nanti
+const ALLOWED_USERS = [246759640,406752113,292115739,122882547,639241715,166577082,120002308,155299727,336877952,6862722575,601292992,114625129,129727898,785391351,123059157]; // kosongkan dulu biar semua bisa akses
+const ADMIN_GROUP = -1002498803166; // isi nanti
 
 const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
 
