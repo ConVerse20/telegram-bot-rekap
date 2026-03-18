@@ -13,7 +13,7 @@ const TelegramBot = require('node-telegram-bot-api')
 const express = require('express')
 const URL = process.env.RAILWAY_STATIC_URL || 'https://telegram-bot-rekap-production.up.railway.app'
 
-const bot = new TelegramBot(TOKEN)
+const bot = new TelegramBot(TOKEN, { webHook: true })
 const app = express()
 
 app.use(express.json())
