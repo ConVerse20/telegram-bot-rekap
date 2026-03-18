@@ -12,16 +12,21 @@ const TOKEN = process.env.TOKEN;
 const PORT = process.env.PORT || 3000;
 const URL = 'https://telegram-bot-rekap-production.up.railway.app';
 
-const ALLOWED_USERS = [246759640,406752113,292115739,122882547,639241715,166577082,120002308,155299727,336877952,6862722575,601292992,114625129,129727898,785391351,123059157]; // kosongkan dulu biar semua bisa akses
-const ADMIN_GROUP = -1002498803166; // isi nanti
+const ALLOWED_USERS = [246759640,406752113,292115739,122882547,639241715,166577082,120002308,155299727,336877952,6862722575,601292992,114625129,129727898,785391351,123059157];
+const ADMIN_GROUP = -1002498803166;
 
 const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
 
 // ===== INIT =====
-const bot = new TelegramBot(TOKEN, { webHook: true });
+const bot = new TelegramBot(TOKEN);
 const app = express();
 
 app.use(express.json());
+
+// ===== ROOT (WAJIB BUAT RAILWAY) =====
+app.get('/', (req, res) => {
+  res.send('OK');
+});
 
 // ===== GLOBAL ERROR =====
 process.on('uncaughtException', console.error);
@@ -29,7 +34,7 @@ process.on('unhandledRejection', console.error);
 
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
-  res.sendStatus(200); // ⚡ WAJIB cepat
+  res.sendStatus(200);
 
   try {
     console.log('📩 UPDATE MASUK');
@@ -40,29 +45,23 @@ app.post('/webhook', (req, res) => {
 });
 
 // ===== START SERVER =====
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log('🚀 Server jalan di port', PORT);
-
-  const webhookUrl = `${URL}/webhook`;
-  console.log('🌐 Webhook:', webhookUrl);
-
-  try {
-    await bot.deleteWebHook();
-    await bot.setWebHook(webhookUrl);
-    console.log('✅ Webhook aktif');
-  } catch (err) {
-    console.error('❌ Gagal set webhook:', err);
-  }
+  console.log('🌐 Webhook:', `${URL}/webhook`);
 });
 
 // ===== GOOGLE AUTH =====
 let credentials;
 
 try {
+  if (!process.env.GOOGLE_CREDENTIALS) {
+    throw new Error('ENV GOOGLE_CREDENTIALS kosong');
+  }
+
   credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
 } catch (err) {
-  console.error('❌ GOOGLE_CREDENTIALS ERROR:', err);
+  console.error('❌ GOOGLE_CREDENTIALS ERROR:', err.message);
 }
 
 const auth = new google.auth.GoogleAuth({
@@ -131,7 +130,6 @@ async function saveToSheet(data) {
 
 // ===== COMMAND START =====
 bot.onText(/\/start/, (msg) => {
-  console.log('START dari:', msg.from.id);
   bot.sendMessage(msg.chat.id, '🤖 BOT AKTIF 🔥');
 });
 
