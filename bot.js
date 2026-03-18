@@ -1,6 +1,4 @@
-bot.deleteWebHook().then(() => {
-  console.log('🧹 Webhook dihapus, pakai polling');
-});
+
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 
