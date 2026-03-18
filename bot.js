@@ -29,7 +29,14 @@ const bot = new TelegramBot(TOKEN, {
   webHook: true
 });
 
-bot.setWebHook(`${URL}/webhook`);
+(async () => {
+  try {
+    const res = await bot.setWebHook(`${URL}/webhook`);
+    console.log('✅ SET WEBHOOK:', res);
+  } catch (err) {
+    console.error('❌ GAGAL SET WEBHOOK:', err.message);
+  }
+})();
 
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
