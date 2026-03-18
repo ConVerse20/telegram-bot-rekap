@@ -1,4 +1,5 @@
-console.log("TOKEN:", process.env.BOT_TOKEN);
+process.env.NTBA_FIX_350 = 1;
+
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const { google } = require('googleapis');
@@ -7,24 +8,31 @@ const { google } = require('googleapis');
 const TOKEN = process.env.BOT_TOKEN;
 const PORT = process.env.PORT || 8080;
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+const BASE_URL = process.env.BASE_URL;
 
-// ===== INIT BOT (ANTI 409) =====
 const bot = new TelegramBot(TOKEN);
+const app = express();
 
-// stop polling lama (kalau ada)
-bot.stopPolling().catch(() => {});
+app.use(express.json());
 
-// hapus webhook + reset session
-bot.deleteWebHook({ drop_pending_updates: true }).then(() => {
-  console.log('🧹 Webhook dihapus');
+// ===== WEBHOOK SETUP =====
+const webhookPath = `/bot${TOKEN}`;
+const webhookUrl = `${BASE_URL}${webhookPath}`;
 
-  bot.startPolling();
-  console.log('🚀 BOT POLLING AKTIF');
+bot.setWebHook(webhookUrl).then(() => {
+  console.log('🌐 Webhook aktif:', webhookUrl);
+});
+
+// endpoint webhook
+app.post(webhookPath, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
 });
 
 // ===== EXPRESS =====
-const app = express();
-app.get('/', (req, res) => res.send('Bot hidup'));
+app.get('/', (req, res) => {
+  res.send('Bot webhook aktif 🚀');
+});
 
 app.listen(PORT, () => {
   console.log(`🌐 Server hidup di port ${PORT}`);
@@ -93,7 +101,7 @@ async function saveToSheet(data) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Sheet1!A:J', // ⚠️ sesuaikan nama tab
+      range: 'Sheet1!A:J',
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [[
@@ -113,38 +121,15 @@ async function saveToSheet(data) {
 
     console.log('📊 Masuk Google Sheet');
   } catch (err) {
-    console.error('❌ ERROR SHEET FULL:', err);
+    console.error('❌ ERROR SHEET:', err.message);
   }
 }
 
 // ===== COMMAND =====
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, '🤖 BOT AKTIF 🔥');
+  bot.sendMessage(msg.chat.id, '🤖 BOT WEBHOOK AKTIF 🔥');
 });
 
-bot.onText(/\/rekap/, (msg) => {
-  const chatId = msg.chat.id;
-
-  if (dataRekap.length === 0) {
-    return bot.sendMessage(chatId, '📭 Belum ada data');
-  }
-
-  let hasil = '📋 REKAP TIKET\n\n';
-
-  dataRekap.forEach((d, i) => {
-    hasil += `${i + 1}.
-STATUS: ${d.status}
-TIKET: ${d.tiket}
-INET: ${d.inet}
-PETUGAS: ${d.petugas}
-
-`;
-  });
-
-  bot.sendMessage(chatId, hasil);
-});
-
-// ===== HANDLE MESSAGE =====
 bot.on('message', async (msg) => {
   try {
     if (!msg.text) return;
@@ -154,11 +139,7 @@ bot.on('message', async (msg) => {
 
     const parsed = parseMessage(msg.text);
 
-    // skip kalau kosong semua
-    if (isKosong(parsed)) {
-      console.log('⛔ Kosong, skip');
-      return;
-    }
+    if (isKosong(parsed)) return;
 
     dataRekap.push(parsed);
 
@@ -167,6 +148,6 @@ bot.on('message', async (msg) => {
     bot.sendMessage(msg.chat.id, '✅ Data tersimpan');
 
   } catch (err) {
-    console.error('❌ ERROR MESSAGE:', err);
+    console.error('❌ ERROR MESSAGE:', err.message);
   }
 });
