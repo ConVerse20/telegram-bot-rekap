@@ -2,26 +2,52 @@ const { google } = require('googleapis');
 const moment = require('moment');
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 
 // ===== CONFIG =====
 const TOKEN = process.env.BOT_TOKEN;
+const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 8080;
-const URL = 'https://telegram-bot-rekap-production.up.railway.app';
+const URL = 'https://telegram-bot-rekap-production.up.railway.app'; // ganti kalau domain beda
+
+if (!TOKEN) {
+  console.error('❌ BOT_TOKEN kosong');
+  process.exit(1);
+}
+if (!SHEET_ID) {
+  console.error('❌ SPREADSHEET_ID kosong');
+  process.exit(1);
+}
 
 // ===== INIT =====
 const bot = new TelegramBot(TOKEN, { webHook: true });
 const app = express();
-
 app.use(express.json());
 
 // ===== GLOBAL ERROR =====
 process.on('uncaughtException', console.error);
 process.on('unhandledRejection', console.error);
 
+// ===== DEBUG FILE =====
+const credPath = path.join(__dirname, 'credentials.json');
+console.log('📁 credentials path:', credPath);
+console.log('📁 credentials exists:', fs.existsSync(credPath));
+
+// ===== GOOGLE AUTH =====
+const auth = new google.auth.GoogleAuth({
+  keyFile: credPath,
+  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
+
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
   res.sendStatus(200);
-  bot.processUpdate(req.body);
+  try {
+    bot.processUpdate(req.body);
+  } catch (e) {
+    console.error('❌ Webhook error:', e);
+  }
 });
 
 // ===== START SERVER =====
@@ -32,33 +58,14 @@ app.listen(PORT, async () => {
   const webhookUrl = `${URL}/webhook`;
   console.log('🌐 Set webhook:', webhookUrl);
 
-  await bot.deleteWebHook();
-  await bot.setWebHook(webhookUrl);
-
-  console.log('✅ Webhook aktif');
+  try {
+    await bot.deleteWebHook();
+    await bot.setWebHook(webhookUrl);
+    console.log('✅ Webhook aktif');
+  } catch (err) {
+    console.error('❌ Gagal set webhook:', err);
+  }
 });
-
-// ===== GOOGLE AUTH =====
-let auth;
-
-try {
-  const raw = process.env.GSHEET_CREDENTIALS;
-
-  if (!raw) throw new Error("GSHEET_CREDENTIALS kosong");
-
-  const parsed = JSON.parse(raw);
-  parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
-
-  auth = new google.auth.GoogleAuth({
-    credentials: parsed,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
-
-  console.log('✅ GOOGLE AUTH SIAP');
-
-} catch (err) {
-  console.error('❌ GOOGLE AUTH ERROR:', err);
-}
 
 // ===== PARSER =====
 function parseLaporan(text = '') {
@@ -100,7 +107,7 @@ async function saveToSheet(data) {
   ]];
 
   await sheets.spreadsheets.values.append({
-    spreadsheetId: process.env.SPREADSHEET_ID,
+    spreadsheetId: SHEET_ID,
     range: 'DATA!A:J',
     valueInputOption: 'USER_ENTERED',
     resource: { values }
@@ -109,7 +116,7 @@ async function saveToSheet(data) {
   console.log('✅ BERHASIL MASUK SHEET');
 }
 
-// ===== START COMMAND =====
+// ===== COMMAND =====
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, '🤖 BOT AKTIF 🔥');
 });
@@ -123,7 +130,6 @@ bot.on('message', async (msg) => {
     if (!data.tiket) return;
 
     await saveToSheet(data);
-
     bot.sendMessage(msg.chat.id, '✅ Data masuk Google Sheet');
 
   } catch (err) {
