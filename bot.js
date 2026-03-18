@@ -19,21 +19,17 @@ const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
 // ===== INIT EXPRESS =====
 const app = express();
 app.use(express.json());
+
 app.get('/', (req, res) => {
   res.send('🚀 BOT AKTIF');
 });
-// ===== INIT BOT (WEBHOOK MODE) =====
+
+// ===== INIT BOT =====
 const bot = new TelegramBot(TOKEN, {
   webHook: true
 });
 
-// set webhook ke railway
 bot.setWebHook(`${URL}/webhook`);
-
-// ===== ROOT (WAJIB BUAT RAILWAY) =====
-app.get('/health', (req, res) => {
-  res.send('healthy');
-});
 
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
@@ -51,13 +47,8 @@ app.post('/webhook', (req, res) => {
 let credentials;
 
 try {
-  if (!process.env.GOOGLE_CREDENTIALS) {
-    throw new Error('ENV GOOGLE_CREDENTIALS kosong');
-  }
-
   credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
-
 } catch (err) {
   console.error('❌ GOOGLE_CREDENTIALS ERROR:', err.message);
 }
@@ -72,13 +63,15 @@ if (!fs.existsSync('foto')) {
   fs.mkdirSync('foto');
 }
 
-// ===== PARSER =====
+// ===== PARSER (ANTI GAGAL) =====
 function parseLaporan(text = '') {
+  const clean = text.replace(/\r/g, '');
+
   const get = (label) => {
-  const regex = new RegExp(`[-•]?\\s*${label}\\s*:\\s*(.*)`, 'i');
-  const match = text.match(regex);
-  return match ? match[1].trim() : '';
-};
+    const regex = new RegExp(`[-•]?\\s*${label}\\s*:\\s*(.+)`, 'i');
+    const match = clean.match(regex);
+    return match ? match[1].trim() : '';
+  };
 
   return {
     status: get('STATUS'),
@@ -126,7 +119,7 @@ async function saveToSheet(data) {
   }
 }
 
-// ===== COMMAND START =====
+// ===== COMMAND =====
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, '🤖 BOT AKTIF 🔥');
 });
@@ -136,11 +129,24 @@ bot.on('message', async (msg) => {
   try {
     if (!msg.text) return;
 
-    if (ALLOWED_USERS.length && !ALLOWED_USERS.includes(msg.from.id)) return;
+    // ❗ skip command biar gak bentrok
+    if (msg.text.startsWith('/')) return;
+
+    console.log('📥 MASUK:', msg.text);
+
+    // ❗ filter user
+    if (ALLOWED_USERS.length && !ALLOWED_USERS.includes(msg.from.id)) {
+      console.log('⛔ USER TIDAK DIIZINKAN:', msg.from.id);
+      return;
+    }
 
     const data = parseLaporan(msg.text);
+    console.log('📊 PARSED:', data);
 
-    if (!data.tiket) return;
+    if (!data.tiket) {
+      console.log('❌ TIKET TIDAK KEBACA');
+      return;
+    }
 
     await saveToSheet(data);
 
