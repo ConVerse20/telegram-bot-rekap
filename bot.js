@@ -100,24 +100,24 @@ async function saveToSheet(data) {
     const now = new Date().toLocaleString('id-ID');
 
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'DATA!A:J'
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [[
-          now,
-          data.status,
-          data.tiket,
-          data.inet,
-          data.cp,
-          data.gangguan,
-          data.perbaikan,
-          data.alamat,
-          data.odp,
-          data.petugas
-        ]]
-      }
-    });
+  spreadsheetId: SHEET_ID,
+  range: 'DATA!A:J', // ✅ ada koma
+  valueInputOption: 'USER_ENTERED',
+  requestBody: {
+    values: [[
+      moment().format('YYYY-MM-DD HH:mm:ss'),
+      data.status,
+      data.tiket,
+      data.inet,
+      data.cp,
+      data.penyebab,
+      data.perbaikan,
+      data.alamat,
+      data.odp,
+      data.petugas
+    ]]
+  }
+});
 
     console.log('📊 Masuk Google Sheet');
   } catch (err) {
