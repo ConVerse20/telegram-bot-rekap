@@ -75,10 +75,10 @@ if (!fs.existsSync('foto')) {
 // ===== PARSER =====
 function parseLaporan(text = '') {
   const get = (label) => {
-    const regex = new RegExp(`${label}\\s*:\\s*(.*)`, 'i');
-    const match = text.match(regex);
-    return match ? match[1].trim() : '';
-  };
+  const regex = new RegExp(`[-•]?\\s*${label}\\s*:\\s*(.*)`, 'i');
+  const match = text.match(regex);
+  return match ? match[1].trim() : '';
+};
 
   return {
     status: get('STATUS'),
