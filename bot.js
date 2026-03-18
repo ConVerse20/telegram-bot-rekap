@@ -53,14 +53,20 @@ initWebhook();
 
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
-  res.sendStatus(200);
-
   try {
-    console.log('📩 UPDATE MASUK');
+    console.log('📩 UPDATE MASUK:', JSON.stringify(req.body));
+
     bot.processUpdate(req.body);
+
+    res.sendStatus(200);
   } catch (err) {
     console.error('❌ Webhook error:', err);
+    res.sendStatus(500);
   }
+});
+
+bot.on('message', (msg) => {
+  console.log('📨 PESAN DITERIMA:', msg.text);
 });
 
 // ===== GOOGLE AUTH =====
