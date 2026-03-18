@@ -9,7 +9,6 @@ const express = require('express');
 
 // ===== CONFIG =====
 const TOKEN = process.env.TOKEN;
-const PORT = process.env.PORT || 3000;
 const URL = 'https://telegram-bot-rekap-production.up.railway.app';
 
 const ALLOWED_USERS = [246759640,406752113,292115739,122882547,639241715,166577082,120002308,155299727,336877952,6862722575,601292992,114625129,129727898,785391351,123059157];
