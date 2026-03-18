@@ -1,25 +1,47 @@
-
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
+const { google } = require('googleapis');
 
+// ===== CONFIG =====
 const TOKEN = process.env.BOT_TOKEN;
 const PORT = process.env.PORT || 8080;
+const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
+// ===== INIT BOT =====
 const bot = new TelegramBot(TOKEN, { polling: true });
-const app = express();
 
-app.get('/', (req, res) => {
-  res.send('Bot hidup');
+// 🔥 WAJIB: hapus webhook biar gak 409
+bot.deleteWebHook().then(() => {
+  console.log('🧹 Webhook dihapus, pakai polling');
 });
+
+// ===== EXPRESS =====
+const app = express();
+app.get('/', (req, res) => res.send('Bot hidup'));
 
 app.listen(PORT, () => {
   console.log(`🌐 Server hidup di port ${PORT}`);
 });
 
-// ================== STORAGE ==================
+// ===== GOOGLE AUTH =====
+let credentials;
+try {
+  credentials = JSON.parse(process.env.GSHEET_CREDENTIALS);
+} catch (err) {
+  console.error('❌ GSHEET_CREDENTIALS error:', err.message);
+}
+
+const auth = new google.auth.GoogleAuth({
+  credentials,
+  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
+
+const sheets = google.sheets({ version: 'v4', auth });
+
+// ===== STORAGE =====
 let dataRekap = [];
 
-// ================== PARSER ==================
+// ===== PARSER =====
 function parseMessage(text) {
   const fields = {
     status: '',
@@ -36,68 +58,112 @@ function parseMessage(text) {
   const lines = text.split('\n');
 
   lines.forEach(line => {
-    const l = line.toUpperCase();
+    const val = line.split(':')[1]?.trim() || '';
 
-    if (l.includes('STATUS')) fields.status = line.split(':')[1]?.trim() || '';
-    if (l.includes('NO TIKET')) fields.tiket = line.split(':')[1]?.trim() || '';
-    if (l.includes('INET/TLP')) fields.inet = line.split(':')[1]?.trim() || '';
-    if (l.includes('CP PELANGGAN')) fields.cp = line.split(':')[1]?.trim() || '';
-    if (l.includes('PENYEBAB')) fields.gangguan = line.split(':')[1]?.trim() || '';
-    if (l.includes('LANGKAH')) fields.perbaikan = line.split(':')[1]?.trim() || '';
-    if (l.includes('ALAMAT')) fields.alamat = line.split(':')[1]?.trim() || '';
-    if (l.includes('ODP')) fields.odp = line.split(':')[1]?.trim() || '';
-    if (l.includes('PETUGAS')) fields.petugas = line.split(':')[1]?.trim() || '';
+    if (/STATUS/i.test(line)) fields.status = val;
+    if (/NO TIKET/i.test(line)) fields.tiket = val;
+    if (/INET\/TLP/i.test(line)) fields.inet = val;
+    if (/CP PELANGGAN/i.test(line)) fields.cp = val;
+    if (/PENYEBAB/i.test(line)) fields.gangguan = val;
+    if (/LANGKAH/i.test(line)) fields.perbaikan = val;
+    if (/ALAMAT/i.test(line)) fields.alamat = val;
+    if (/ODP/i.test(line)) fields.odp = val;
+    if (/PETUGAS/i.test(line)) fields.petugas = val;
   });
 
   return fields;
 }
 
-// ================== VALIDASI ==================
+// ===== VALIDASI =====
 function isKosong(data) {
   return Object.values(data).every(v => v === '');
 }
 
-// ================== HANDLE MESSAGE ==================
-bot.on('message', (msg) => {
+// ===== SAVE TO SHEET =====
+async function saveToSheet(data) {
+  try {
+    const now = new Date().toLocaleString('id-ID');
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Sheet1!A:J',
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[
+          now,
+          data.status,
+          data.tiket,
+          data.inet,
+          data.cp,
+          data.gangguan,
+          data.perbaikan,
+          data.alamat,
+          data.odp,
+          data.petugas
+        ]]
+      }
+    });
+
+    console.log('📊 Masuk Google Sheet');
+  } catch (err) {
+    console.error('❌ Error Sheet:', err.message);
+  }
+}
+
+// ===== COMMAND =====
+bot.onText(/\/start/, (msg) => {
+  bot.sendMessage(msg.chat.id, '🤖 BOT AKTIF 🔥');
+});
+
+bot.onText(/\/rekap/, (msg) => {
   const chatId = msg.chat.id;
-  const text = msg.text;
 
-  if (!text) return;
+  if (dataRekap.length === 0) {
+    return bot.sendMessage(chatId, '📭 Belum ada data');
+  }
 
-  // command rekap
-  if (text === '/rekap') {
-    if (dataRekap.length === 0) {
-      return bot.sendMessage(chatId, '📭 Belum ada data rekap');
-    }
+  let hasil = '📋 REKAP TIKET\n\n';
 
-    let hasil = '📋 REKAP TIKET\n\n';
-
-    dataRekap.forEach((d, i) => {
-      hasil += `${i + 1}.
+  dataRekap.forEach((d, i) => {
+    hasil += `${i + 1}.
 STATUS: ${d.status}
 TIKET: ${d.tiket}
 INET: ${d.inet}
 PETUGAS: ${d.petugas}
 
 `;
-    });
+  });
 
-    return bot.sendMessage(chatId, hasil);
-  }
-
-  // parsing input
-  const parsed = parseMessage(text);
-
-  // kalau kosong semua → skip
-  if (isKosong(parsed)) {
-    console.log('⛔ Data kosong, tidak disimpan');
-    return;
-  }
-
-  // simpan
-  dataRekap.push(parsed);
-
-  console.log('✅ DATA MASUK:', parsed);
-
-  bot.sendMessage(chatId, '✅ Data berhasil disimpan');
+  bot.sendMessage(chatId, hasil);
 });
+
+// ===== HANDLE MESSAGE =====
+bot.on('message', async (msg) => {
+  try {
+    if (!msg.text) return;
+    if (msg.text.startsWith('/')) return;
+
+    console.log('📨 MASUK:', msg.text);
+
+    const parsed = parseMessage(msg.text);
+
+    // 🔥 skip kalau kosong semua
+    if (isKosong(parsed)) {
+      console.log('⛔ Kosong, skip');
+      return;
+    }
+
+    // simpan memory
+    dataRekap.push(parsed);
+
+    // simpan ke sheet
+    await saveToSheet(parsed);
+
+    bot.sendMessage(msg.chat.id, '✅ Data tersimpan');
+
+  } catch (err) {
+    console.error('❌ Error message:', err.message);
+  }
+});
+
+console.log('🚀 BOT POLLING AKTIF');
