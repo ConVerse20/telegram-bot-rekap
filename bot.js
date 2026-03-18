@@ -9,7 +9,6 @@ const express = require('express');
 
 // ================= INIT EXPRESS =================
 const app = express();
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -23,16 +22,11 @@ const ADMIN_GROUP = -1002498803166;
 const SHEET_ID = '1sfRc6ku00NZArsoK-LcBkzK25O0-cj4WZHgIBGiliDo';
 
 // ================= BOT =================
-const bot = new TelegramBot(TOKEN);
+const bot = new TelegramBot(TOKEN, { polling: false });
 
-// ================= DEBUG ROUTE =================
-app.get('/', (req, res) => {
-  res.send('BOT HIDUP');
-});
-
-app.get('/webhook', (req, res) => {
-  res.send('WEBHOOK OK');
-});
+// ================= ROUTE TEST =================
+app.get('/', (req, res) => res.send('BOT HIDUP'));
+app.get('/webhook', (req, res) => res.send('WEBHOOK OK'));
 
 // ================= WEBHOOK =================
 app.post('/webhook', (req, res) => {
@@ -55,7 +49,9 @@ async function initWebhook() {
     await bot.deleteWebHook();
 
     console.log('🔄 SET WEBHOOK...');
-    await bot.setWebHook(`${URL}/webhook`);
+    await bot.setWebHook(`${URL}/webhook`, {
+      drop_pending_updates: true
+    });
 
     const info = await bot.getWebHookInfo();
     console.log('📡 WEBHOOK INFO:', info);
@@ -190,7 +186,7 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, async () => {
   console.log('🚀 Server jalan di port', PORT);
 
-  // penting: set webhook setelah server hidup
+  // WAJIB setelah server hidup
   await initWebhook();
 });
 
