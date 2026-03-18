@@ -3,21 +3,19 @@ const express = require('express');
 
 const app = express();
 
-// ================= CONFIG =================
 const TOKEN = process.env.TOKEN;
 
-// ================= BOT POLLING =================
+// 🔥 POLLING
 const bot = new TelegramBot(TOKEN, { polling: true });
 
 console.log('🚀 BOT POLLING AKTIF');
 
-// ================= TEST BOT =================
 bot.on('message', (msg) => {
   console.log('📨 MASUK:', msg.text);
   bot.sendMessage(msg.chat.id, '✅ BOT HIDUP (POLLING)');
 });
 
-// ================= SERVER (BIAR GAK DIMATIIN RAILWAY) =================
+// 🔥 SERVER BIAR RAILWAY GAK MATI
 app.get('/', (req, res) => {
   res.send('BOT HIDUP');
 });
