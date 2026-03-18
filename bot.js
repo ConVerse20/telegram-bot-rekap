@@ -29,23 +29,27 @@ const bot = new TelegramBot(TOKEN, {
   webHook: true
 });
 
-(async () => {
+// ===== SET & CEK WEBHOOK (ANTI RESET) =====
+async function initWebhook() {
   try {
+    console.log('🔄 SET WEBHOOK...');
+
     const res = await bot.setWebHook(`${URL}/webhook`);
     console.log('✅ SET WEBHOOK:', res);
-  } catch (err) {
-    console.error('❌ GAGAL SET WEBHOOK:', err.message);
-  }
-})();
 
-(async () => {
-  try {
     const info = await bot.getWebHookInfo();
     console.log('📡 WEBHOOK INFO:', info);
+
+    if (!info.url) {
+      console.log('⚠️ WEBHOOK MASIH KOSONG!');
+    }
+
   } catch (err) {
-    console.error('❌ CEK WEBHOOK ERROR:', err.message);
+    console.error('❌ WEBHOOK ERROR:', err.message);
   }
-})();
+}
+
+initWebhook();
 
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
