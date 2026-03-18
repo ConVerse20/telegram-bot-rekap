@@ -240,9 +240,10 @@ cron.schedule('0 17 * * *', async () => {
 });
 
 // ===== START SERVER =====
-app.listen(PORT, () => {
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, '0.0.0.0', () => {
   console.log('🚀 Server jalan di port', PORT);
-  console.log('🌐 Webhook:', `${URL}/webhook`);
 });
 
 console.log('🚀 BOT SIAP FULL');
