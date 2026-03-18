@@ -99,8 +99,8 @@ async function saveToSheet(data) {
     const sheets = google.sheets({ version: 'v4', auth: client });
 
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID,
-      range: 'DATA!A:J', // 🔥 PENTING (sesuai sheet lu)
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: 'DATA!A:J',
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [[
@@ -118,14 +118,13 @@ async function saveToSheet(data) {
       }
     });
 
-    console.log('✅ BERHASIL MASUK SHEET');
+    console.log('✅ MASUK SHEET');
 
   } catch (err) {
-    console.error('❌ ERROR SHEET:', err.message);
+    console.error('❌ ERROR ASLI:', err); // 🔥 INI PENTING
     throw err;
   }
 }
-
 // ===== START COMMAND =====
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, '🤖 BOT AKTIF 🔥');
