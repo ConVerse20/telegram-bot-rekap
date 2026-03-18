@@ -5,7 +5,12 @@ const axios = require('axios');
 const fs = require('fs');
 const cron = require('node-cron');
 
+const TelegramBot = require('node-telegram-bot-api')
+const express = require('express')
+
 const TOKEN = process.env.TOKEN
+const PORT = process.env.PORT || 3000
+const URL = process.env.RAILWAY_STATIC_URL || 'https://telegram-bot-rekap-production.up.railway.app'
 
 const bot = new TelegramBot(TOKEN, { webHook: true })
 const app = express()
