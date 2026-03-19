@@ -46,7 +46,14 @@ app.listen(PORT, async () => {
 });
 
 // ==============================
-// 🔥 PARSER MCU (STABIL)
+// 🔥 VALIDASI TIKET
+// ==============================
+function isValidTiket(tiket) {
+  return /^INC\d+/i.test(tiket || '');
+}
+
+// ==============================
+// 🔥 PARSER MCU
 // ==============================
 function extractMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
@@ -54,7 +61,6 @@ function extractMCU(text) {
   return parts.map(p => "MEDICAL CHECK UP PELANGGAN :" + p);
 }
 
-// 🔥 FIX FIELD BIAR RAPI
 function getField(block, label) {
   const regex = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
   const match = block.match(regex);
@@ -92,7 +98,7 @@ function parseMCU(block) {
 }
 
 // ==============================
-// 💾 SAVE / UPDATE
+// 💾 SAVE / UPDATE (FIX FINAL)
 // ==============================
 async function saveOrUpdate(data, shareloc) {
   const client = await auth.getClient();
@@ -104,7 +110,13 @@ async function saveOrUpdate(data, shareloc) {
   });
 
   const rows = res.data.values || [];
-  let rowIndex = rows.findIndex(r => r[2] === data.tiket);
+
+  let rowIndex = -1;
+
+  // 🔥 hanya cek update jika tiket valid
+  if (isValidTiket(data.tiket)) {
+    rowIndex = rows.findIndex(r => r[2] === data.tiket);
+  }
 
   // ===== UPDATE =====
   if (rowIndex !== -1) {
@@ -132,7 +144,7 @@ async function saveOrUpdate(data, shareloc) {
     return 'update';
   }
 
-  // ===== INSERT =====
+  // ===== INSERT (tetap masuk walau kosong) =====
   const values = [[
     moment().format('YYYY-MM-DD HH:mm:ss'),
     data.status || '',
