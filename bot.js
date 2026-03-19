@@ -9,11 +9,6 @@ const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 8080;
 const URL = 'https://telegram-bot-rekap-production.up.railway.app';
 
-if (!TOKEN) throw new Error('BOT_TOKEN kosong');
-if (!SHEET_ID) throw new Error('SPREADSHEET_ID kosong');
-if (!process.env.GOOGLE_CREDS_BASE64) throw new Error('GOOGLE_CREDS_BASE64 kosong');
-
-// ===== INIT =====
 const bot = new TelegramBot(TOKEN, { webHook: true });
 const app = express();
 app.use(express.json());
@@ -22,7 +17,6 @@ app.use(express.json());
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
 );
-
 creds.private_key = creds.private_key.replace(/\\n/g, '\n');
 
 const auth = new google.auth.GoogleAuth({
@@ -36,19 +30,25 @@ app.post('/webhook', (req, res) => {
   bot.processUpdate(req.body);
 });
 
-// ===== START =====
 app.listen(PORT, async () => {
   await bot.deleteWebHook();
   await bot.setWebHook(`${URL}/webhook`);
-  console.log('🚀 BOT SIAP');
+  console.log('🚀 BOT READY');
 });
 
-// ===== WIB =====
+// ===== WIB TIME =====
 const now = () => moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
 
 // ===== MEMORY =====
 let lastTicketByUser = {};
 let lastRowByTicket = {};
+
+// ===== FIX: AMBIL MCU DARI CHAT PANJANG =====
+function extractMCU(text) {
+  text = text.replace(/\r/g, '');
+  const regex = /MEDICAL CHECK UP PELANGGAN\s*:[\s\S]*?(?=\n\n|$)/gi;
+  return text.match(regex) || [];
+}
 
 // ===== PARSER =====
 function parse(text) {
@@ -56,12 +56,17 @@ function parse(text) {
     const r = new RegExp(`${key}\\s*:\\s*(.*)`, 'i');
     const m = text.match(r);
     if (!m) return '';
+
     let v = m[1].trim();
+
     if (!v || v === ':' || v === '-') return '';
+
     return v;
   };
 
   let cp = get('CP PELANGGAN');
+
+  // fix +62
   if (cp.startsWith('+')) cp = `'${cp}`;
 
   return {
@@ -77,15 +82,20 @@ function parse(text) {
   };
 }
 
-// ===== FILTER =====
-function isValid(data, text) {
-  if (!data.tiket) return false;
-  if (text.toLowerCase().includes('contoh')) return false;
-  if (!data.inet && !data.cp && !data.penyebab) return false;
-  return true;
+// ===== VALIDASI =====
+function isValid(data) {
+  return (
+    data.inet ||
+    data.cp ||
+    data.penyebab ||
+    data.perbaikan ||
+    data.alamat ||
+    data.odp ||
+    data.petugas
+  );
 }
 
-// ===== SAVE =====
+// ===== SAVE / UPDATE =====
 async function save(data) {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
@@ -98,7 +108,28 @@ async function save(data) {
   const rows = res.data.values || [];
   const index = rows.findIndex(r => r[2] === data.tiket);
 
+  const values = [[
+    now(),
+    data.status || '',
+    data.tiket || '',
+    data.inet || '',
+    data.cp || '',
+    data.penyebab || '',
+    data.perbaikan || '',
+    data.alamat || '',
+    data.odp || '',
+    data.petugas || '',
+    ''
+  ]];
+
   if (index !== -1) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `DATA!A${index + 1}:K${index + 1}`,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values }
+    });
+
     return { type: 'update', row: index + 1 };
   }
 
@@ -106,21 +137,7 @@ async function save(data) {
     spreadsheetId: SHEET_ID,
     range: 'DATA!A:K',
     valueInputOption: 'USER_ENTERED',
-    resource: {
-      values: [[
-        now(),
-        data.status,
-        data.tiket,
-        data.inet,
-        data.cp,
-        data.penyebab,
-        data.perbaikan,
-        data.alamat,
-        data.odp,
-        data.petugas,
-        ''
-      ]]
-    }
+    resource: { values }
   });
 
   return { type: 'insert', row: rows.length + 1 };
@@ -135,70 +152,15 @@ async function updateLocation(row, loc) {
     spreadsheetId: SHEET_ID,
     range: `DATA!K${row}`,
     valueInputOption: 'USER_ENTERED',
-    resource: {
-      values: [[loc]]
-    }
+    resource: { values: [[loc]] }
   });
 }
-
-// ===== CEK DATA =====
-async function cekData(inet) {
-  const client = await auth.getClient();
-  const sheets = google.sheets({ version: 'v4', auth: client });
-
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'DATA!A:K',
-  });
-
-  const rows = res.data.values || [];
-
-  for (let i = 1; i < rows.length; i++) {
-    if ((rows[i][3] || '') === inet) return rows[i];
-  }
-
-  return null;
-}
-
-// ===== COMMAND /CEK =====
-bot.onText(/\/cek (.+)/, async (msg, match) => {
-  try {
-    if (msg.chat.type !== 'private') {
-      return bot.sendMessage(msg.chat.id, '❌ Gunakan di japri bot');
-    }
-
-    const inet = match[1].trim();
-    const data = await cekData(inet);
-
-    if (!data) return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
-
-    const text = `
-📡 DATA PELANGGAN
-
-🌐 Internet : ${data[3] || '-'}
-📞 CP       : ${data[4] || '-'}
-📍 Alamat   : ${data[7] || '-'}
-📌 Lokasi   : ${data[10] || '-'}
-`;
-
-    await bot.sendMessage(msg.chat.id, text);
-
-    if (data[10]) {
-      const [lat, lon] = data[10].split(',');
-      await bot.sendLocation(msg.chat.id, parseFloat(lat), parseFloat(lon));
-    }
-
-  } catch (e) {
-    console.error(e);
-    bot.sendMessage(msg.chat.id, '❌ Error cek data');
-  }
-});
 
 // ===== HANDLE MESSAGE =====
 bot.on('message', async (msg) => {
   try {
 
-    // SHARELOC
+    // ===== SHARELOC =====
     if (msg.location) {
       const tiket = lastTicketByUser[msg.from.id];
       if (!tiket) return;
@@ -213,31 +175,36 @@ bot.on('message', async (msg) => {
     }
 
     if (!msg.text) return;
-
-    // skip command
     if (msg.text.startsWith('/')) return;
 
     if (!msg.text.toUpperCase().includes('NO TIKET')) return;
 
-    const data = parse(msg.text);
+    // ===== FIX LONG TEXT =====
+    const blocks = extractMCU(msg.text);
 
-    if (!isValid(data, msg.text)) return;
+    if (!blocks.length) return;
 
-    const result = await save(data);
+    for (const block of blocks) {
 
-    // memory
-    lastTicketByUser[msg.from.id] = data.tiket;
-    lastRowByTicket[data.tiket] = result.row;
+      const data = parse(block);
 
-    // ===== NOTIF BARU =====
-    bot.sendMessage(msg.chat.id,
-      result.type === 'update'
-        ? `🔄 Data ${data.tiket} berhasil di-update ke Google Sheet ✅`
-        : `🆕 Data ${data.tiket} sudah Dicatet ke Google Sheet ✅`
-    );
+      if (!data.tiket) continue;
+      if (!isValid(data)) continue;
 
-  } catch (e) {
-    console.error(e);
-    bot.sendMessage(msg.chat.id, '❌ Error');
+      const result = await save(data);
+
+      lastTicketByUser[msg.from.id] = data.tiket;
+      lastRowByTicket[data.tiket] = result.row;
+
+      await bot.sendMessage(msg.chat.id,
+        result.type === 'update'
+          ? `🔄 Data ${data.tiket} berhasil di-update ke Google Sheet ✅`
+          : `🆕 Data ${data.tiket} sudah Dicatet ke Google Sheet ✅`
+      );
+    }
+
+  } catch (err) {
+    console.error('❌ ERROR:', err.message);
+    bot.sendMessage(msg.chat.id, '❌ Gagal proses data');
   }
 });
