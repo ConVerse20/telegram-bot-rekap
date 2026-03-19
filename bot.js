@@ -44,7 +44,7 @@ let lastTicketByUser = {};
 let lastRowByTicket = {};
 let bufferText = {};
 
-// ===== AMBIL MCU (ANTI CHAT PANJANG) =====
+// ===== EXTRACT MCU =====
 function extractMCU(text) {
   text = text.replace(/\r/g, '');
   const regex = /MEDICAL CHECK UP PELANGGAN\s*:[\s\S]*?(?=\n\n|$)/gi;
@@ -65,6 +65,8 @@ function parse(text) {
   };
 
   let cp = get('CP PELANGGAN');
+
+  // fix +62
   if (cp.startsWith('+')) cp = `'${cp}`;
 
   return {
@@ -189,8 +191,8 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
     return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
   }
 
-  await bot.sendMessage(msg.chat.id, `
-🔎 HASIL CEK DATA
+  await bot.sendMessage(msg.chat.id,
+`🔎 HASIL CEK DATA
 
 🌐 Internet : ${data.inet || '-'}
 📞 CP       : ${data.cp || '-'}
@@ -208,6 +210,8 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
 bot.on('message', async (msg) => {
   try {
     const userId = msg.from.id;
+    const isPrivate = msg.chat.type === 'private';
+    const isForward = msg.forward_from || msg.forward_from_chat;
 
     // ===== SHARELOC =====
     if (msg.location) {
@@ -222,17 +226,9 @@ bot.on('message', async (msg) => {
     }
 
     if (!msg.text) return;
-
-    // biar /cek gak ketabrak
     if (msg.text.startsWith('/cek')) return;
 
-    // buffer (forward banyak chat)
-    bufferText[userId] = (bufferText[userId] || '') + '\n' + msg.text;
-
-    setTimeout(async () => {
-      const text = bufferText[userId];
-      delete bufferText[userId];
-
+    const processText = async (text) => {
       if (!text.toUpperCase().includes('NO TIKET')) return;
 
       const blocks = extractMCU(text);
@@ -266,8 +262,22 @@ bot.on('message', async (msg) => {
             : `🆕 Data ${data.tiket} sudah Dicatet ke Google Sheet ✅`
         );
       }
+    };
 
-    }, 1500);
+    // ===== JAPRI =====
+    if (isPrivate && !isForward) {
+      await processText(msg.text);
+    } else {
+      bufferText[userId] = (bufferText[userId] || '') + '\n' + msg.text;
+
+      setTimeout(async () => {
+        const text = bufferText[userId];
+        delete bufferText[userId];
+        if (!text) return;
+
+        await processText(text);
+      }, 1500);
+    }
 
   } catch (err) {
     console.error(err);
