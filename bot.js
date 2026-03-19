@@ -3,19 +3,26 @@ const moment = require('moment');
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 
+// ===== CONFIG =====
 const TOKEN = process.env.BOT_TOKEN;
 const SHEET_ID = process.env.SPREADSHEET_ID;
-const URL = process.env.WEBHOOK_URL;
 const PORT = process.env.PORT || 8080;
+const URL = process.env.WEBHOOK_URL; // 🔥 jangan hardcode
 
-const bot = new TelegramBot(TOKEN, { webHook: true });
+// ===== INIT BOT (AUTO MODE) =====
+const useWebhook = !!URL;
+
+const bot = new TelegramBot(TOKEN, useWebhook ? { webHook: true } : { polling: true });
+
 const app = express();
 app.use(express.json());
 
 const lastLocation = {};
 
 // ===== GOOGLE AUTH =====
-const creds = JSON.parse(Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString());
+const creds = JSON.parse(
+  Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
+);
 creds.private_key = creds.private_key.replace(/\\n/g, '\n');
 
 const auth = new google.auth.GoogleAuth({
@@ -23,16 +30,28 @@ const auth = new google.auth.GoogleAuth({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-app.post('/webhook', (req, res) => {
-  res.sendStatus(200);
-  bot.processUpdate(req.body);
-});
+// ===== WEBHOOK SAFE MODE =====
+if (useWebhook) {
+  app.post('/webhook', (req, res) => {
+    res.sendStatus(200);
+    bot.processUpdate(req.body);
+  });
 
-app.listen(PORT, async () => {
-  console.log('🚀 BOT SIAP FULL FINAL');
-  await bot.deleteWebHook();
-  await bot.setWebHook(`${URL}/webhook`);
-});
+  app.listen(PORT, async () => {
+    console.log('🚀 BOT WEBHOOK MODE');
+
+    try {
+      await bot.deleteWebHook();
+      await bot.setWebHook(`${URL}/webhook`);
+      console.log('✅ Webhook aktif:', `${URL}/webhook`);
+    } catch (err) {
+      console.log('❌ Webhook gagal:', err.message);
+    }
+  });
+
+} else {
+  console.log('🚀 BOT POLLING MODE (AMAN)');
+}
 
 // =============================
 // UTIL
@@ -40,7 +59,7 @@ app.listen(PORT, async () => {
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 // =============================
-// PARSE MCU
+// PARSER MCU
 // =============================
 function extractMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
@@ -52,8 +71,10 @@ function getField(block, label) {
   const regex = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
   const match = block.match(regex);
   if (!match) return '';
+
   let val = match[1].replace(/:/g, '').trim();
   if (!val || val === '-') return '';
+
   return val;
 }
 
@@ -118,7 +139,6 @@ async function saveOrUpdate(data, shareloc) {
   });
 
   const rows = res.data.values || [];
-
   let idx = rows.findIndex(r => r[3] === data.inet);
 
   let shareChanged = false;
@@ -181,7 +201,7 @@ async function saveOrUpdate(data, shareloc) {
 }
 
 // =============================
-// /CEK (GRUP + JAPRI FIX)
+// /CEK FIX FINAL
 // =============================
 bot.onText(/\/cek (.+)/, async (msg, match) => {
   try {
@@ -208,7 +228,6 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
 📞 CP : ${row[4] || '-'}
 📍 ALAMAT : ${row[7] || '-'}`;
 
-    // grup
     if (msg.chat.type !== 'private') {
       try {
         await bot.sendMessage(msg.from.id, txt);
@@ -223,15 +242,14 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
       return;
     }
 
-    // japri
     await bot.sendMessage(chatId, txt);
     if (row[10]) {
       const [lat, lng] = row[10].split(',');
       await bot.sendLocation(chatId, +lat, +lng);
     }
 
-  } catch (e) {
-    console.log(e);
+  } catch (err) {
+    console.log(err);
   }
 });
 
@@ -242,7 +260,6 @@ bot.on('message', async (msg) => {
   try {
     const text = msg.text || msg.caption || '';
 
-    // ===== SHARELOK BUFFER =====
     const loc = extractLocation(msg);
     if (loc) {
       lastLocation[msg.chat.id] = loc;
@@ -291,7 +308,7 @@ bot.on('message', async (msg) => {
           `🔄 Data berhasil di-update ke Google Sheet ✅`);
       }
 
-      // SHARELOK notif
+      // sharelok notif
       if (res.shareChanged) {
         await bot.sendMessage(msg.chat.id,
           `📍 Sharelok berhasil di-update ke Google Sheet ✅`);
