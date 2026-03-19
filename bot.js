@@ -31,10 +31,16 @@ app.use(express.json());
 process.on('uncaughtException', console.error);
 process.on('unhandledRejection', console.error);
 
-// ===== GOOGLE AUTH (BASE64) =====
+// ===== GOOGLE AUTH (FIX FINAL) =====
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
 );
+
+// 🔥 WAJIB: fix newline private key
+creds.private_key = creds.private_key.replace(/\\n/g, '\n');
+
+// 🔍 DEBUG (boleh dihapus nanti)
+console.log('🔑 SERVICE ACCOUNT:', creds.client_email);
 
 const auth = new google.auth.GoogleAuth({
   credentials: creds,
@@ -91,30 +97,35 @@ function parseLaporan(text = '') {
 
 // ===== SAVE TO SHEET =====
 async function saveToSheet(data) {
-  const client = await auth.getClient();
-  const sheets = google.sheets({ version: 'v4', auth: client });
+  try {
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: 'v4', auth: client });
 
-  const values = [[
-    moment().format('YYYY-MM-DD HH:mm:ss'),
-    data.status,
-    data.tiket,
-    data.inet,
-    data.cp,
-    data.penyebab,
-    data.perbaikan,
-    data.alamat,
-    data.odp,
-    data.petugas
-  ]];
+    const values = [[
+      moment().format('YYYY-MM-DD HH:mm:ss'),
+      data.status,
+      data.tiket,
+      data.inet,
+      data.cp,
+      data.penyebab,
+      data.perbaikan,
+      data.alamat,
+      data.odp,
+      data.petugas
+    ]];
 
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SHEET_ID,
-    range: 'DATA!A:J',
-    valueInputOption: 'USER_ENTERED',
-    resource: { values }
-  });
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: 'DATA!A:J',
+      valueInputOption: 'USER_ENTERED',
+      resource: { values }
+    });
 
-  console.log('✅ BERHASIL MASUK SHEET');
+    console.log('✅ BERHASIL MASUK SHEET');
+  } catch (err) {
+    console.error('❌ GOOGLE ERROR:', err.response?.data || err.message);
+    throw err;
+  }
 }
 
 // ===== COMMAND =====
