@@ -2,14 +2,12 @@ const { google } = require('googleapis');
 const moment = require('moment');
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 
 // ===== CONFIG =====
 const TOKEN = process.env.BOT_TOKEN;
 const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 8080;
-const URL = 'https://telegram-bot-rekap-production.up.railway.app'; // ganti kalau domain beda
+const URL = 'https://telegram-bot-rekap-production.up.railway.app';
 
 if (!TOKEN) {
   console.error('❌ BOT_TOKEN kosong');
@@ -17,6 +15,10 @@ if (!TOKEN) {
 }
 if (!SHEET_ID) {
   console.error('❌ SPREADSHEET_ID kosong');
+  process.exit(1);
+}
+if (!process.env.GOOGLE_CREDS_BASE64) {
+  console.error('❌ GOOGLE_CREDS_BASE64 kosong');
   process.exit(1);
 }
 
@@ -29,14 +31,13 @@ app.use(express.json());
 process.on('uncaughtException', console.error);
 process.on('unhandledRejection', console.error);
 
-// ===== DEBUG FILE =====
-const credPath = path.join(__dirname, 'credentials.json');
-console.log('📁 credentials path:', credPath);
-console.log('📁 credentials exists:', fs.existsSync(credPath));
+// ===== GOOGLE AUTH (BASE64) =====
+const creds = JSON.parse(
+  Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
+);
 
-// ===== GOOGLE AUTH =====
 const auth = new google.auth.GoogleAuth({
-  keyFile: credPath,
+  credentials: creds,
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
@@ -133,7 +134,7 @@ bot.on('message', async (msg) => {
     bot.sendMessage(msg.chat.id, '✅ Data masuk Google Sheet');
 
   } catch (err) {
-    console.error('❌ ERROR FULL:', err);
+    console.error('❌ ERROR DETAIL:', err.response?.data || err.message);
     bot.sendMessage(msg.chat.id, '❌ Gagal simpan ke sheet');
   }
 });
