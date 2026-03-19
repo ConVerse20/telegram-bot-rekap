@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL ALL-IN-ONE (WEBHOOK SAFE - RAILWAY)
+// 🚀 MCU BOT FINAL ALL-IN-ONE (WEBHOOK SAFE)
 // =======================
 
 const { google } = require('googleapis');
@@ -40,6 +40,17 @@ app.listen(PORT, async () => {
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
+function clean(v) {
+  if (!v) return '';
+  v = v.trim();
+
+  if (v === '-' || v === ':' || v === 'x') return '';
+  if (/nama odp/i.test(v)) return '';
+  if (/petugas/i.test(v)) return '';
+
+  return v;
+}
+
 // normalize display
 function normalizeCP(cp) {
   if (!cp) return '';
@@ -54,7 +65,7 @@ function normalizeCP(cp) {
   }).join(' / ');
 }
 
-// normalize compare (anti duplicate)
+// normalize compare
 function normalizeCompare(cp) {
   return cp.replace(/\D/g, '').replace(/^0/, '62');
 }
@@ -104,8 +115,8 @@ function splitMCU(text) {
   parts.shift();
 
   return parts.map(p => {
-    let clean = p.split(/contoh\s*:/i)[0];
-    return "MEDICAL CHECK UP PELANGGAN :" + clean;
+    let cleanText = p.split(/contoh\s*:/i)[0];
+    return "MEDICAL CHECK UP PELANGGAN :" + cleanText;
   });
 }
 
@@ -121,15 +132,15 @@ function parseMCU(txt) {
   if (/PENYEBAB|LANGKAH|ALAMAT|ODP|PETUGAS/i.test(cp)) cp = '';
 
   return {
-    status: get('STATUS', txt),
-    tiket: get('NO TIKET', txt),
-    inet: get('INET/TLP', txt),
-    cp: normalizeCP(cp),
-    penyebab: get('PENYEBAB GANGGUAN', txt),
-    perbaikan: get('LANGKAH PERBAIKAN', txt),
-    alamat: get('ALAMAT LENGKAP', txt),
-    odp: get('NAMA ODP', txt).trim(),
-    petugas: get('PETUGAS', txt),
+    status: clean(get('STATUS', txt)),
+    tiket: clean(get('NO TIKET', txt)),
+    inet: clean(get('INET/TLP', txt)),
+    cp: normalizeCP(clean(cp)),
+    penyebab: clean(get('PENYEBAB GANGGUAN', txt)),
+    perbaikan: clean(get('LANGKAH PERBAIKAN', txt)),
+    alamat: clean(get('ALAMAT LENGKAP', txt)),
+    odp: clean(get('NAMA ODP', txt)),
+    petugas: clean(get('PETUGAS', txt)),
   };
 }
 
@@ -180,19 +191,32 @@ async function saveData(data, loc) {
     let old = rows[idx];
     while (old.length < 11) old.push('');
 
-    // ===== FIX CP DUPLICATE =====
+    // ===== FIX CP DUPLICATE TOTAL =====
     if (data.cp) {
       let existingRaw = old[4] ? old[4].split(' / ') : [];
       let existingClean = existingRaw.map(e => normalizeCompare(e));
-      let newList = explodeCP(data.cp);
+      let newClean = explodeCP(data.cp);
 
-      newList.forEach(n => {
+      let merged = [...existingRaw];
+
+      newClean.forEach(n => {
         if (!existingClean.includes(n)) {
-          existingRaw.push('+62' + n.replace(/^62/, ''));
+          merged.push('+62' + n.replace(/^62/, ''));
         }
       });
 
-      old[4] = existingRaw.join(' / ');
+      let final = [];
+      let seen = [];
+
+      merged.forEach(n => {
+        let c = normalizeCompare(n);
+        if (!seen.includes(c)) {
+          seen.push(c);
+          final.push('+62' + c.replace(/^62/, ''));
+        }
+      });
+
+      old[4] = final.join(' / ');
     }
 
     if (data.status) old[1] = data.status;
@@ -229,37 +253,7 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// 🔎 /CEK
-// =======================
-bot.onText(/\/cek (.+)/, async (msg, match) => {
-  const inet = match[1].trim();
-
-  const client = await auth.getClient();
-  const sheets = google.sheets({ version: 'v4', auth: client });
-
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'DATA!A:K',
-  });
-
-  const row = res.data.values.find(r => r[3] === inet);
-
-  if (!row) return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
-
-  await bot.sendMessage(msg.chat.id,
-`📡 INTERNET : ${row[3]}
-📞 CP : ${row[4] || '-'}
-📍 ALAMAT : ${row[7] || '-'}
-🌐 ODP : ${row[8] || '-'}`);
-
-  if (row[10]) {
-    const [lat, lon] = row[10].split(',');
-    bot.sendLocation(msg.chat.id, +lat, +lon);
-  }
-});
-
-// =======================
-// 🚀 MAIN ENGINE
+// 🚀 MAIN
 // =======================
 bot.on('message', handleMsg);
 bot.on('edited_message', handleMsg);
@@ -293,7 +287,6 @@ async function handleMsg(msg) {
 
       const shareloc = lastLocation[chatId] || '';
 
-      // ===== REMINDER WAJIB =====
       const fields = {
         "INET/TLP": data.inet,
         "CP PELANGGAN": data.cp,
@@ -302,11 +295,7 @@ async function handleMsg(msg) {
         "PETUGAS": data.petugas
       };
 
-      const kosong = Object.keys(fields).filter(k => {
-        const v = fields[k];
-        return !v || v.trim() === '';
-      });
-
+      const kosong = Object.keys(fields).filter(k => !fields[k]);
       const semuaKosong = Object.values(fields).every(v => !v);
 
       if (kosong.length && !semuaKosong) {
