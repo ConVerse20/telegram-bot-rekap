@@ -1,5 +1,5 @@
 // =======================
-// 🚀 FINAL MCU BOT (SAFE WEBHOOK)
+// 🚀 MCU BOT FINAL STABLE (NO RESET WEBHOOK)
 // =======================
 
 const { google } = require('googleapis');
@@ -10,40 +10,25 @@ const express = require('express');
 const TOKEN = process.env.BOT_TOKEN;
 const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 3000;
-const URL = process.env.WEBHOOK_URL;
 
-// 🔥 JANGAN PAKSA SET WEBHOOK TERUS
+// 🔥 TANPA polling & TANPA setWebhook
 const bot = new TelegramBot(TOKEN);
 const app = express();
+
 app.use(express.json());
 
-const lastLocation = {};
-const bufferMsg = {};
-
-// ===== GOOGLE =====
-const creds = JSON.parse(
-  Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
-);
-creds.private_key = creds.private_key.replace(/\\n/g, '\n');
-
-const auth = new google.auth.GoogleAuth({
-  credentials: creds,
-  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-});
-
-// ===== WEBHOOK HANDLER =====
+// ===== WEBHOOK HANDLER (INI YANG DIPAKAI TELEGRAM) =====
 app.post('/webhook', (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
 
-// ===== START SERVER (TANPA RESET WEBHOOK)
 app.listen(PORT, () => {
-  console.log('🚀 BOT WEBHOOK STABIL AKTIF');
+  console.log('🚀 BOT STABIL (WEBHOOK TANPA RESET)');
 });
 
 // =======================
-// UTIL
+// 🔧 UTIL
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const safe = v => v ? v.toString().trim() : '';
@@ -64,7 +49,7 @@ function normalizeCP(cp) {
 }
 
 // =======================
-// SHARELOK FIX
+// 📍 SHARELOK
 // =======================
 function getLocation(msg) {
   if (msg.location)
@@ -74,22 +59,24 @@ function getLocation(msg) {
     return `${msg.reply_to_message.location.latitude},${msg.reply_to_message.location.longitude}`;
 
   const t = msg.text || msg.caption || '';
-  let m = t.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
-  if (m) return `${m[1]},${m[2]}`;
+  const m = t.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
 
-  return '';
+  return m ? `${m[1]},${m[2]}` : '';
 }
 
 // =======================
-// BUFFER
+// 📦 BUFFER
 // =======================
+const bufferMsg = {};
+const lastLocation = {};
+
 function addBuffer(chatId, msg) {
   if (!bufferMsg[chatId]) bufferMsg[chatId] = [];
   bufferMsg[chatId].push(msg);
 }
 
 // =======================
-// PARSER
+// 🧠 PARSER
 // =======================
 function splitMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
@@ -118,7 +105,7 @@ function parseMCU(txt) {
     inet: get('INET/TLP', txt),
     cp: normalizeCP(cp),
     penyebab: get('PENYEBAB GANGGUAN', txt),
-    perbaikan: get('LANGKAH PERBAIKAN', txt),
+    perbaikan: get('LANGKAH PERBAIKAN'),
     alamat: get('ALAMAT LENGKAP', txt),
     odp: get('NAMA ODP', txt),
     petugas: get('PETUGAS', txt),
@@ -126,8 +113,18 @@ function parseMCU(txt) {
 }
 
 // =======================
-// SAVE
+// 💾 GOOGLE
 // =======================
+const creds = JSON.parse(
+  Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
+);
+creds.private_key = creds.private_key.replace(/\\n/g, '\n');
+
+const auth = new google.auth.GoogleAuth({
+  credentials: creds,
+  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
+
 async function saveData(data, loc) {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
@@ -169,7 +166,7 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// MAIN
+// 🚀 MAIN
 // =======================
 bot.on('message', async (msg) => {
   try {
@@ -195,26 +192,7 @@ bot.on('message', async (msg) => {
       const data = parseMCU(b);
       if (!data.inet) continue;
 
-      const shareloc = lastLocation[chatId] || '';
-
-      // REMINDER
-      const kosong = [];
-      if (!data.cp) kosong.push('CP');
-      if (!data.odp) kosong.push('ODP');
-      if (!data.petugas) kosong.push('PETUGAS');
-
-      const semuaKosong = !data.cp && !data.odp && !data.petugas;
-
-      if (kosong.length && !semuaKosong) {
-        const user = msg.from.username
-          ? '@' + msg.from.username
-          : msg.from.first_name;
-
-        await bot.sendMessage(chatId,
-          `⚠️ ${user} data belum lengkap (${kosong.join(', ')})`);
-      }
-
-      const res = await saveData(data, shareloc);
+      const res = await saveData(data, lastLocation[chatId] || '');
 
       await bot.sendMessage(chatId,
         res === 'insert'
@@ -223,7 +201,7 @@ bot.on('message', async (msg) => {
       );
     }
 
-  } catch (err) {
-    console.log(err);
+  } catch (e) {
+    console.log(e);
   }
 });
