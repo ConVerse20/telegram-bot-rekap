@@ -3,15 +3,14 @@ const moment = require('moment');
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 
-// ===== CONFIG =====
+// ================= CONFIG =================
 const TOKEN = process.env.BOT_TOKEN;
 const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 8080;
-const URL = process.env.WEBHOOK_URL; // 🔥 jangan hardcode
+const URL = process.env.WEBHOOK_URL;
 
-// ===== INIT BOT (AUTO MODE) =====
+// ================= INIT =================
 const useWebhook = !!URL;
-
 const bot = new TelegramBot(TOKEN, useWebhook ? { webHook: true } : { polling: true });
 
 const app = express();
@@ -19,7 +18,7 @@ app.use(express.json());
 
 const lastLocation = {};
 
-// ===== GOOGLE AUTH =====
+// ================= GOOGLE AUTH =================
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
 );
@@ -30,7 +29,7 @@ const auth = new google.auth.GoogleAuth({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-// ===== WEBHOOK SAFE MODE =====
+// ================= WEBHOOK SAFE =================
 if (useWebhook) {
   app.post('/webhook', (req, res) => {
     res.sendStatus(200);
@@ -38,29 +37,44 @@ if (useWebhook) {
   });
 
   app.listen(PORT, async () => {
-    console.log('🚀 BOT WEBHOOK MODE');
+    console.log('🚀 WEBHOOK MODE');
 
     try {
       await bot.deleteWebHook();
       await bot.setWebHook(`${URL}/webhook`);
-      console.log('✅ Webhook aktif:', `${URL}/webhook`);
-    } catch (err) {
-      console.log('❌ Webhook gagal:', err.message);
+      console.log('✅ Webhook aktif');
+    } catch (e) {
+      console.log('❌ Webhook error:', e.message);
     }
   });
 
 } else {
-  console.log('🚀 BOT POLLING MODE (AMAN)');
+  console.log('🚀 POLLING MODE');
 }
 
-// =============================
-// UTIL
-// =============================
+// ================= UTIL =================
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
-// =============================
-// PARSER MCU
-// =============================
+// ================= CP NORMALIZER =================
+function normalizeCP(cp) {
+  if (!cp) return '';
+
+  cp = cp.replace(/\s+/g, '');
+
+  // multiple nomor
+  let list = cp.split('/').map(x => x.trim());
+
+  list = list.map(num => {
+    if (num.startsWith('+62')) return num;
+    if (num.startsWith('62')) return '+' + num;
+    if (num.startsWith('0')) return '+62' + num.slice(1);
+    return num;
+  });
+
+  return list.join(' / ');
+}
+
+// ================= PARSER =================
 function extractMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
   parts.shift();
@@ -71,23 +85,17 @@ function getField(block, label) {
   const regex = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
   const match = block.match(regex);
   if (!match) return '';
-
   let val = match[1].replace(/:/g, '').trim();
   if (!val || val === '-') return '';
-
   return val;
 }
 
 function parseMCU(block) {
-  let cp = getField(block, 'CP PELANGGAN');
-  cp = cp.replace(/\s+/g, '');
-  if (cp && cp.startsWith('+')) cp = `'${cp}`;
-
   return {
     status: getField(block, 'STATUS'),
     tiket: getField(block, 'NO TIKET'),
     inet: getField(block, 'INET/TLP'),
-    cp,
+    cp: normalizeCP(getField(block, 'CP PELANGGAN')),
     penyebab: getField(block, 'PENYEBAB GANGGUAN'),
     perbaikan: getField(block, 'LANGKAH PERBAIKAN'),
     alamat: getField(block, 'ALAMAT LENGKAP'),
@@ -96,9 +104,7 @@ function parseMCU(block) {
   };
 }
 
-// =============================
-// SHARELOK FIX ALL CASE
-// =============================
+// ================= SHARELOK =================
 function extractLocation(msg) {
   if (msg.location)
     return `${msg.location.latitude},${msg.location.longitude}`;
@@ -114,21 +120,10 @@ function extractLocation(msg) {
   m = text.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (m) return `${m[1]},${m[2]}`;
 
-  const entities = msg.entities || msg.caption_entities || [];
-  for (let e of entities) {
-    if (e.type === 'url') {
-      const url = text.substring(e.offset, e.offset + e.length);
-      let mm = url.match(/(-?\d+\.\d+),(-?\d+\.\d+)/);
-      if (mm) return `${mm[1]},${mm[2]}`;
-    }
-  }
-
   return '';
 }
 
-// =============================
-// SAVE / UPDATE
-// =============================
+// ================= SAVE / UPDATE =================
 async function saveOrUpdate(data, shareloc) {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
@@ -146,7 +141,7 @@ async function saveOrUpdate(data, shareloc) {
   if (idx !== -1) {
     let row = rows[idx];
 
-    // CP append
+    // CP append (tidak overwrite)
     if (data.cp) {
       let cpList = row[4] ? row[4].split(' / ') : [];
       if (!cpList.includes(data.cp)) cpList.push(data.cp);
@@ -200,9 +195,7 @@ async function saveOrUpdate(data, shareloc) {
   return { type: 'insert', shareChanged: !!shareloc };
 }
 
-// =============================
-// /CEK FIX FINAL
-// =============================
+// ================= /CEK FINAL =================
 bot.onText(/\/cek (.+)/, async (msg, match) => {
   try {
     const inet = match[1].trim();
@@ -223,26 +216,13 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
       return bot.sendMessage(chatId, `❌ Data tidak ditemukan (${inet})`);
     }
 
-    const txt =
+    const text =
 `📡 INTERNET : ${row[3]}
 📞 CP : ${row[4] || '-'}
 📍 ALAMAT : ${row[7] || '-'}`;
 
-    if (msg.chat.type !== 'private') {
-      try {
-        await bot.sendMessage(msg.from.id, txt);
-        if (row[10]) {
-          const [lat, lng] = row[10].split(',');
-          await bot.sendLocation(msg.from.id, +lat, +lng);
-        }
-        await bot.sendMessage(chatId, `📩 Cek dikirim ke japri`);
-      } catch {
-        await bot.sendMessage(chatId, txt);
-      }
-      return;
-    }
+    await bot.sendMessage(chatId, text);
 
-    await bot.sendMessage(chatId, txt);
     if (row[10]) {
       const [lat, lng] = row[10].split(',');
       await bot.sendLocation(chatId, +lat, +lng);
@@ -253,32 +233,20 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
   }
 });
 
-// =============================
-// HANDLE MESSAGE
-// =============================
+// ================= MAIN =================
 bot.on('message', async (msg) => {
   try {
     const text = msg.text || msg.caption || '';
 
     const loc = extractLocation(msg);
-    if (loc) {
-      lastLocation[msg.chat.id] = loc;
-      lastLocation[msg.from?.id] = loc;
-      lastLocation[msg.chat.id + '_' + msg.from?.id] = loc;
-      lastLocation['last'] = loc;
-    }
+    if (loc) lastLocation['last'] = loc;
 
-    if (!/MEDICAL\s*CHECK/i.test(text)) return;
+    if (!/MEDICAL/i.test(text)) return;
 
     await delay(1500);
 
     const blocks = extractMCU(text);
-
-    const shareloc =
-      lastLocation[msg.chat.id + '_' + msg.from?.id] ||
-      lastLocation[msg.from?.id] ||
-      lastLocation[msg.chat.id] ||
-      lastLocation['last'] || '';
+    const shareloc = lastLocation['last'] || '';
 
     for (let b of blocks) {
       const data = parseMCU(b);
@@ -286,20 +254,6 @@ bot.on('message', async (msg) => {
 
       const res = await saveOrUpdate(data, shareloc);
 
-      const user = msg.from?.username
-        ? '@' + msg.from.username
-        : msg.from.first_name;
-
-      let kosong = [];
-      if (!data.odp) kosong.push('ODP');
-      if (!data.petugas) kosong.push('PETUGAS');
-
-      if (kosong.length) {
-        await bot.sendMessage(msg.chat.id,
-          `⚠️ ${user} data belum lengkap (${kosong.join(', ')})`);
-      }
-
-      // MCU notif
       if (res.type === 'insert') {
         await bot.sendMessage(msg.chat.id,
           `🆕 Data Baru sudah Dicatet ke Google Sheet ✅`);
@@ -308,7 +262,6 @@ bot.on('message', async (msg) => {
           `🔄 Data berhasil di-update ke Google Sheet ✅`);
       }
 
-      // sharelok notif
       if (res.shareChanged) {
         await bot.sendMessage(msg.chat.id,
           `📍 Sharelok berhasil di-update ke Google Sheet ✅`);
