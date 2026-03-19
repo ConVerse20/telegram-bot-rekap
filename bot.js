@@ -4,31 +4,26 @@ const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const cron = require('node-cron');
 
-// ===== CONFIG =====
+// CONFIG
 const TOKEN = process.env.BOT_TOKEN;
 const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 8080;
 const URL = 'https://telegram-bot-rekap-production.up.railway.app';
-const GROUP_ID = process.env.GROUP_ID;
 
 if (!TOKEN) throw new Error('BOT_TOKEN kosong');
 if (!SHEET_ID) throw new Error('SPREADSHEET_ID kosong');
 if (!process.env.GOOGLE_CREDS_BASE64) throw new Error('GOOGLE_CREDS_BASE64 kosong');
 
-// ===== INIT =====
+// INIT
 const bot = new TelegramBot(TOKEN, { webHook: true });
 const app = express();
 app.use(express.json());
 
-process.on('uncaughtException', console.error);
-process.on('unhandledRejection', console.error);
-
-// ===== GOOGLE AUTH =====
+// GOOGLE AUTH
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
 );
 
-// FIX PRIVATE KEY
 creds.private_key = creds.private_key.replace(/\\n/g, '\n');
 
 const auth = new google.auth.GoogleAuth({
@@ -36,135 +31,55 @@ const auth = new google.auth.GoogleAuth({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-// ===== WEBHOOK =====
+// WEBHOOK
 app.post('/webhook', (req, res) => {
   res.sendStatus(200);
   bot.processUpdate(req.body);
 });
 
-// ===== START =====
+// START
 app.listen(PORT, async () => {
   await bot.deleteWebHook();
   await bot.setWebHook(`${URL}/webhook`);
-  console.log('🚀 BOT SIAP FULL');
+  console.log('🚀 BOT SIAP');
 });
 
-// ===== TIME WIB =====
-function getWIB() {
+// WIB TIME
+function now() {
   return moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
 }
 
-// ===== PARSER =====
-function parseLaporan(text = '') {
-  const result = {
-    status: '',
-    tiket: '',
-    inet: '',
-    cp: '',
-    penyebab: '',
-    perbaikan: '',
-    alamat: '',
-    odp: '',
-    petugas: ''
+// PARSER
+function parse(text) {
+  const get = (key) => {
+    const r = new RegExp(`${key}\\s*:\\s*(.*)`, 'i');
+    const m = text.match(r);
+    if (!m) return '';
+    let v = m[1].trim();
+    if (!v || v === ':' || v === '-') return '';
+    return v;
   };
 
-  text.split('\n').forEach(line => {
-    let clean = line.trim();
-    if (clean.startsWith('-')) clean = clean.slice(1).trim();
+  let cp = get('CP PELANGGAN');
+  if (cp.startsWith('+')) cp = `'${cp}`;
 
-    const parts = clean.split(':');
-    if (parts.length < 2) return;
-
-    const key = parts[0].toUpperCase();
-    let value = parts.slice(1).join(':').trim();
-
-    if (!value || value === '-' || value === ':') value = '';
-
-    if (key.includes('STATUS')) result.status = value.toUpperCase();
-    else if (key.includes('NO TIKET')) result.tiket = value;
-    else if (key.includes('INET')) result.inet = value;
-    else if (key.includes('CP')) {
-      if (value.startsWith('+')) value = `'${value}`;
-      result.cp = value;
-    }
-    else if (key.includes('PENYEBAB')) result.penyebab = value;
-    else if (key.includes('LANGKAH')) result.perbaikan = value;
-    else if (key.includes('ALAMAT')) result.alamat = value;
-    else if (key.includes('ODP')) result.odp = value;
-    else if (key.includes('PETUGAS')) result.petugas = value;
-  });
-
-  return result;
+  return {
+    status: get('STATUS'),
+    tiket: get('NO TIKET'),
+    inet: get('INET/TLP'),
+    cp,
+    penyebab: get('PENYEBAB GANGGUAN'),
+    perbaikan: get('LANGKAH PERBAIKAN'),
+    alamat: get('ALAMAT LENGKAP'),
+    odp: get('NAMA ODP'),
+    petugas: get('PETUGAS'),
+  };
 }
 
-// ===== VALIDASI =====
-function validateData(data) {
-  const kosong = [];
-  if (!data.odp) kosong.push('NAMA ODP');
-  if (!data.petugas) kosong.push('PETUGAS');
-  return kosong;
-}
-
-function getUsername(msg) {
-  return msg.from.username
-    ? '@' + msg.from.username
-    : msg.from.first_name;
-}
-
-// ===== MERGE CP =====
-function mergeCP(oldCP = '', newCP = '') {
-  if (!newCP) return oldCP;
-
-  const list = oldCP
-    ? oldCP.split('/').map(x => x.trim()).filter(Boolean)
-    : [];
-
-  if (list.includes(newCP)) return oldCP;
-
-  list.push(newCP);
-  return list.join(' / ');
-}
-
-// ===== SAVE =====
-async function saveToSheet(data, location = '') {
+// SAVE
+async function save(data, loc = '') {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
-
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'DATA!A:K',
-  });
-
-  const rows = res.data.values || [];
-  const rowIndex = rows.findIndex(r => r[2] === data.tiket);
-
-  if (rowIndex !== -1) {
-    const oldCP = rows[rowIndex][4] || '';
-    const finalCP = mergeCP(oldCP, data.cp);
-
-    const newRow = [[
-      getWIB(),
-      data.status,
-      data.tiket,
-      data.inet,
-      finalCP,
-      data.penyebab,
-      data.perbaikan,
-      data.alamat,
-      data.odp,
-      data.petugas,
-      location || rows[rowIndex][10] || ''
-    ]];
-
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID,
-      range: `DATA!A${rowIndex + 1}:K${rowIndex + 1}`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values: newRow }
-    });
-
-    return 'update';
-  }
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
@@ -172,7 +87,7 @@ async function saveToSheet(data, location = '') {
     valueInputOption: 'USER_ENTERED',
     resource: {
       values: [[
-        getWIB(),
+        now(),
         data.status,
         data.tiket,
         data.inet,
@@ -182,148 +97,30 @@ async function saveToSheet(data, location = '') {
         data.alamat,
         data.odp,
         data.petugas,
-        location
+        loc
       ]]
     }
   });
-
-  return 'insert';
 }
 
-// ===== FORMAT OUTPUT =====
-function formatDataOutput(data) {
-  return `📡 *DATA PELANGGAN*
-
-🌐 Internet : ${data.inet || '-'}
-📞 CP       : ${data.cp || '-'}
-📍 Alamat   : ${data.alamat || '-'}
-📌 Lokasi   : ${data.lokasi || '-'}`;
-}
-
-// ===== CEK DATA =====
-async function cariDataByInet(inet) {
-  const client = await auth.getClient();
-  const sheets = google.sheets({ version: 'v4', auth: client });
-
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'DATA!A:K',
-  });
-
-  const rows = res.data.values || [];
-
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-
-    if ((row[3] || '').trim() === inet.trim()) {
-      return {
-        inet: row[3],
-        cp: row[4],
-        alamat: row[7],
-        lokasi: row[10],
-      };
-    }
-  }
-
-  return null;
-}
-
-// ===== COMMAND CEK (PRIVATE ONLY) =====
-bot.onText(/\/cek (.+)/, async (msg, match) => {
-  if (msg.chat.type !== 'private') {
-    return bot.sendMessage(msg.chat.id, '⚠️ Gunakan di japri bot ya 🙏');
-  }
-
-  const inet = match[1].trim();
-  const data = await cariDataByInet(inet);
-
-  if (!data) {
-    return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
-  }
-
-  await bot.sendMessage(msg.chat.id, formatDataOutput(data), {
-    parse_mode: 'Markdown'
-  });
-
-  if (data.lokasi) {
-    const [lat, lon] = data.lokasi.split(',');
-
-    await bot.sendLocation(msg.chat.id, parseFloat(lat), parseFloat(lon));
-
-    await bot.sendMessage(
-      msg.chat.id,
-      `🗺️ https://maps.google.com/?q=${data.lokasi}`
-    );
-  }
-});
-
-// ===== HANDLE MESSAGE =====
+// HANDLE
 bot.on('message', async (msg) => {
   try {
     if (!msg.text) return;
-    if (!msg.text.toUpperCase().includes('NO TIKET')) return;
+    if (!msg.text.includes('NO TIKET')) return;
 
-    const data = parseLaporan(msg.text);
-    const missing = validateData(data);
-    const username = getUsername(msg);
+    const data = parse(msg.text);
 
-    if (missing.length > 0) {
-      bot.sendMessage(msg.chat.id,
-`⚠️ DATA BELUM LENGKAP
-
-- ${missing.join('\n- ')}
-
-Harap dilengkapi ${username}`);
-    }
-
-    const location = msg.location
+    const loc = msg.location
       ? `${msg.location.latitude},${msg.location.longitude}`
       : '';
 
-    const result = await saveToSheet(data, location);
+    await save(data, loc);
 
-    bot.sendMessage(msg.chat.id,
-      result === 'update'
-        ? '🔄 Data berhasil di-update'
-        : '🆕 Data baru masuk'
-    );
+    bot.sendMessage(msg.chat.id, '✅ Masuk sheet');
 
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
+    console.error(e);
     bot.sendMessage(msg.chat.id, '❌ Error');
   }
-});
-
-// ===== REKAP =====
-cron.schedule('0 17 * * *', async () => {
-  if (!GROUP_ID) return;
-
-  const client = await auth.getClient();
-  const sheets = google.sheets({ version: 'v4', auth: client });
-
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'DATA!A:J',
-  });
-
-  const rows = res.data.values || [];
-  const today = moment().utcOffset(7).format('YYYY-MM-DD');
-
-  let total = 0, close = 0, open = 0;
-
-  rows.forEach((r, i) => {
-    if (i === 0) return;
-    if (!r[0]?.includes(today)) return;
-
-    total++;
-    if ((r[1] || '').includes('CLOSE')) close++;
-    else open++;
-  });
-
-  bot.sendMessage(GROUP_ID,
-`📊 REKAP HARI INI
-
-Total : ${total}
-Close : ${close}
-Open  : ${open}`);
 });
