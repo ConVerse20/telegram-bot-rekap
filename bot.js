@@ -44,13 +44,12 @@ app.listen(PORT, async () => {
 });
 
 // ==============================
-// 🔥 PARSER MCU SUPER KUAT
+// 🔥 PARSER MCU (ANTI GAGAL)
 // ==============================
 function extractMCU(text) {
   text = text.replace(/\r/g, '');
 
   const regex = /MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:[\s\S]*?(?=\n\s*\n|$)/gi;
-
   return text.match(regex) || [];
 }
 
@@ -98,7 +97,7 @@ function getShareloc(msg) {
 }
 
 // ==============================
-// 💾 SAVE / UPDATE SHEET
+// 💾 SAVE / UPDATE (FIX KOSONG)
 // ==============================
 async function saveOrUpdate(data, shareloc) {
   const client = await auth.getClient();
@@ -113,8 +112,8 @@ async function saveOrUpdate(data, shareloc) {
 
   let rowIndex = rows.findIndex(r => r[2] === data.tiket);
 
+  // ================= UPDATE =================
   if (rowIndex !== -1) {
-    // UPDATE
     let row = rows[rowIndex];
 
     if (data.cp && !row[4]?.includes(data.cp)) {
@@ -138,22 +137,19 @@ async function saveOrUpdate(data, shareloc) {
     return 'update';
   }
 
-  // SKIP kalau semua kosong
-  if (!data.tiket && !data.inet && !data.alamat) return 'skip';
-
-  // INSERT
+  // ================= INSERT (TETAP MASUK WALAU KOSONG) =================
   const values = [[
     moment().format('YYYY-MM-DD HH:mm:ss'),
-    data.status,
-    data.tiket,
-    data.inet,
-    data.cp,
-    data.penyebab,
-    data.perbaikan,
-    data.alamat,
-    data.odp,
-    data.petugas,
-    shareloc
+    data.status || '',
+    data.tiket || '',
+    data.inet || '',
+    data.cp || '',
+    data.penyebab || '',
+    data.perbaikan || '',
+    data.alamat || '',
+    data.odp || '',
+    data.petugas || '',
+    shareloc || ''
   ]];
 
   await sheets.spreadsheets.values.append({
@@ -167,7 +163,7 @@ async function saveOrUpdate(data, shareloc) {
 }
 
 // ==============================
-// 🔍 /cek (PRIVATE ONLY)
+// 🔍 /cek (PRIVATE)
 // ==============================
 bot.onText(/\/cek (.+)/, async (msg, match) => {
   if (msg.chat.type !== 'private') return;
@@ -187,13 +183,10 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
 
   if (!row) return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
 
-  const text = `
-📡 INTERNET : ${row[3]}
+  bot.sendMessage(msg.chat.id,
+`📡 INTERNET : ${row[3]}
 📞 CP : ${row[4] || '-'}
-📍 ALAMAT : ${row[7]}
-  `;
-
-  bot.sendMessage(msg.chat.id, text);
+📍 ALAMAT : ${row[7]}`);
 
   if (row[10]) {
     const [lat, lng] = row[10].split(',');
@@ -202,13 +195,13 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
 });
 
 // ==============================
-// 🤖 HANDLE MESSAGE (FINAL FIX)
+// 🤖 HANDLE MESSAGE (SUPER FIX)
 // ==============================
 bot.on('message', async (msg) => {
   try {
     const text = msg.text || msg.caption || '';
 
-    // 🔥 WAJIB ADA MCU
+    // 🔥 WAJIB MCU
     if (!text.toUpperCase().includes('MEDICAL CHECK UP')) return;
 
     const blocks = extractMCU(text);
@@ -217,16 +210,23 @@ bot.on('message', async (msg) => {
     for (let block of blocks) {
       const data = parseMCU(block);
 
+      // ❌ skip kalau benar-benar kosong semua
+      if (!data.tiket && !data.inet && !data.alamat) continue;
+
       const result = await saveOrUpdate(data, shareloc);
 
-      // 🔔 REMINDER
+      // 🔥 TAG USER
+      const username = msg.from?.username
+        ? '@' + msg.from.username
+        : msg.from.first_name;
+
       let kosong = [];
       if (!data.odp) kosong.push('ODP');
       if (!data.petugas) kosong.push('PETUGAS');
 
       if (kosong.length > 0) {
         bot.sendMessage(msg.chat.id,
-          `⚠️ Data belum lengkap (${kosong.join(', ')})`
+          `⚠️ ${username} data belum lengkap (${kosong.join(', ')})`
         );
       }
 
@@ -244,6 +244,6 @@ bot.on('message', async (msg) => {
     }
 
   } catch (err) {
-    console.error(err);
+    console.error('ERROR:', err);
   }
 });
