@@ -1,16 +1,22 @@
 // =======================
-// 🚀 FINAL MCU BOT ALL-IN-ONE
+// 🚀 FINAL MCU BOT ALL-IN-ONE (WEBHOOK)
 // =======================
 
 const { google } = require('googleapis');
 const TelegramBot = require('node-telegram-bot-api');
 const moment = require('moment');
+const express = require('express');
 
 // ===== CONFIG =====
 const TOKEN = process.env.BOT_TOKEN;
 const SHEET_ID = process.env.SPREADSHEET_ID;
+const PORT = process.env.PORT || 3000;
+const URL = process.env.WEBHOOK_URL;
 
-const bot = new TelegramBot(TOKEN, { polling: true });
+// ===== INIT =====
+const bot = new TelegramBot(TOKEN, { webHook: true });
+const app = express();
+app.use(express.json());
 
 const lastLocation = {};
 const bufferMsg = {};
@@ -27,10 +33,27 @@ const auth = new google.auth.GoogleAuth({
 });
 
 // =======================
+// 🌐 WEBHOOK
+// =======================
+app.post('/webhook', (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+app.listen(PORT, async () => {
+  try {
+    await bot.deleteWebHook();
+    await bot.setWebHook(`${URL}/webhook`);
+    console.log('🚀 WEBHOOK AKTIF');
+  } catch (e) {
+    console.log('Webhook error:', e.message);
+  }
+});
+
+// =======================
 // 🧠 UTIL
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
-
 const safe = v => v ? v.toString().trim() : '';
 
 function normalizeCP(cp) {
@@ -50,26 +73,29 @@ function normalizeCP(cp) {
 }
 
 // =======================
-// 📍 SHARELOK DETECT (FIX FORWARD)
+// 📍 SHARELOK DETECT (FIX GROUP + FORWARD)
 // =======================
 function getLocation(msg) {
   if (msg.location) {
     return `${msg.location.latitude},${msg.location.longitude}`;
   }
 
-  if (msg.forward_from_chat && msg.location) {
-    return `${msg.location.latitude},${msg.location.longitude}`;
+  if (msg.reply_to_message?.location) {
+    return `${msg.reply_to_message.location.latitude},${msg.reply_to_message.location.longitude}`;
   }
 
-  if (msg.forward_from && msg.location) {
-    return `${msg.location.latitude},${msg.location.longitude}`;
-  }
+  const text = msg.text || msg.caption || '';
+  let m = text.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+  if (m) return `${m[1]},${m[2]}`;
+
+  m = text.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return `${m[1]},${m[2]}`;
 
   return '';
 }
 
 // =======================
-// 📦 BUFFER (ANTI MISS FORWARD)
+// 📦 BUFFER (ANTI MISS)
 // =======================
 function addBuffer(chatId, msg) {
   if (!bufferMsg[chatId]) bufferMsg[chatId] = [];
@@ -77,7 +103,7 @@ function addBuffer(chatId, msg) {
 }
 
 // =======================
-// 🧠 PARSER MCU (FIX PANJANG)
+// 🧠 PARSER MCU
 // =======================
 function splitMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
@@ -114,7 +140,7 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 💾 SAVE / UPDATE GSHEET
+// 💾 SAVE GSHEET
 // =======================
 async function saveData(data, loc) {
   const client = await auth.getClient();
@@ -126,7 +152,6 @@ async function saveData(data, loc) {
   });
 
   const rows = res.data.values || [];
-
   let idx = rows.findIndex(r => r[3] === data.inet);
 
   const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
@@ -151,7 +176,6 @@ async function saveData(data, loc) {
     let old = rows[idx];
     while (old.length < 11) old.push('');
 
-    // CP gabung
     if (data.cp) {
       let list = old[4] ? old[4].split(' / ') : [];
       if (!list.includes(data.cp)) list.push(data.cp);
@@ -192,44 +216,48 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// 🔎 CEK COMMAND
+// 🔎 /CEK (GRUP + JAPRI)
 // =======================
 bot.onText(/\/cek (.+)/, async (msg, match) => {
-  const inet = match[1];
+  try {
+    const inet = match[1].trim();
 
-  const client = await auth.getClient();
-  const sheets = google.sheets({ version: 'v4', auth: client });
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: 'v4', auth: client });
 
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'DATA!A:K',
-  });
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'DATA!A:K',
+    });
 
-  const rows = res.data.values || [];
+    const rows = res.data.values || [];
+    const row = rows.find(r => r[3] === inet);
 
-  const row = rows.find(r => r[3] === inet);
+    if (!row) {
+      return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
+    }
 
-  if (!row) {
-    return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
-  }
-
-  const text = `
+    const text = `
 📡 INTERNET : ${row[3]}
 📞 CP : ${row[4] || '-'}
 📍 ALAMAT : ${row[7] || '-'}
 🌐 ODP : ${row[8] || '-'}
 `;
 
-  await bot.sendMessage(msg.chat.id, text);
+    await bot.sendMessage(msg.chat.id, text);
 
-  if (row[10]) {
-    const [lat, lon] = row[10].split(',');
-    bot.sendLocation(msg.chat.id, lat, lon);
+    if (row[10]) {
+      const [lat, lon] = row[10].split(',');
+      await bot.sendLocation(msg.chat.id, +lat, +lon);
+    }
+
+  } catch (e) {
+    console.log(e);
   }
 });
 
 // =======================
-// 🚀 MAIN MESSAGE
+// 🚀 MAIN ENGINE
 // =======================
 bot.on('message', async (msg) => {
   try {
@@ -240,7 +268,6 @@ bot.on('message', async (msg) => {
     if (loc) lastLocation[chatId] = loc;
 
     addBuffer(chatId, msg);
-
     await delay(1000);
 
     const combined = bufferMsg[chatId]
@@ -301,4 +328,4 @@ bot.on('message', async (msg) => {
   }
 });
 
-console.log('🚀 BOT FINAL ALL-IN-ONE SIAP');
+console.log('🚀 BOT FINAL ALL-IN-ONE WEBHOOK SIAP');
