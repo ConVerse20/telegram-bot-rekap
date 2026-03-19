@@ -27,7 +27,7 @@ const auth = new google.auth.GoogleAuth({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-// ===== WEBHOOK SAFE =====
+// ===== WEBHOOK =====
 if (URL) {
   app.post('/webhook', (req, res) => {
     res.sendStatus(200);
@@ -37,26 +37,24 @@ if (URL) {
   app.listen(PORT, async () => {
     await bot.deleteWebHook();
     await bot.setWebHook(`${URL}/webhook`);
-    console.log('🚀 WEBHOOK AKTIF');
+    console.log('🚀 Webhook aktif');
   });
-} else {
-  console.log('🚀 POLLING AKTIF');
 }
 
 // ===== UTIL =====
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
-// ===== CLEAN FIELD =====
+// ===== CLEAN =====
 function clean(val) {
   if (!val) return '';
   return val.replace(/:/g, '').trim();
 }
 
-// ===== NORMALIZE CP =====
+// ===== CP FIX =====
 function normalizeCP(cp) {
   if (!cp) return '';
-
   cp = cp.replace(/\s+/g, '');
+
   let list = cp.split('/').map(x => x.trim());
 
   list = list.map(num => {
@@ -69,11 +67,16 @@ function normalizeCP(cp) {
   return list.join(' / ');
 }
 
-// ===== PARSER MCU =====
+// ===== PARSER =====
 function extractMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
   parts.shift();
-  return parts.map(p => "MEDICAL CHECK UP PELANGGAN :" + p);
+
+  return parts.map(p => {
+    // 🔥 POTONG SAMPAI SEBELUM "contoh"
+    let cleanPart = p.split(/contoh\s*:/i)[0];
+    return "MEDICAL CHECK UP PELANGGAN :" + cleanPart;
+  });
 }
 
 function getField(block, label) {
@@ -97,26 +100,19 @@ function parseMCU(block) {
   };
 }
 
-// ===== SHARELOK ALL MODE =====
+// ===== SHARELOK =====
 function extractLocation(msg) {
   if (msg.location)
     return `${msg.location.latitude},${msg.location.longitude}`;
 
-  if (msg.venue?.location)
-    return `${msg.venue.location.latitude},${msg.venue.location.longitude}`;
-
   const text = msg.text || msg.caption || '';
-
-  let m = text.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
-  if (m) return `${m[1]},${m[2]}`;
-
-  m = text.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  const m = text.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
   if (m) return `${m[1]},${m[2]}`;
 
   return '';
 }
 
-// ===== SAVE / UPDATE =====
+// ===== SAVE =====
 async function saveOrUpdate(data, shareloc) {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
@@ -190,7 +186,7 @@ async function saveOrUpdate(data, shareloc) {
   return { type: 'insert', shareChanged: !!shareloc };
 }
 
-// ===== /CEK FINAL =====
+// ===== /CEK =====
 bot.onText(/\/cek (.+)/, async (msg, match) => {
   try {
     const inet = match[1].trim();
@@ -214,7 +210,8 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
     const text =
 `📡 INTERNET : ${row[3]}
 📞 CP : ${row[4] || '-'}
-📍 ALAMAT : ${row[7] || '-'}`;
+📍 ALAMAT : ${row[7] || '-'}
+🌐 ODP : ${row[8] || '-'}`;
 
     await bot.sendMessage(chatId, text);
 
@@ -228,7 +225,7 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
   }
 });
 
-// ===== MAIN ENGINE =====
+// ===== MAIN =====
 bot.on('message', async (msg) => {
   try {
     const text = msg.text || msg.caption || '';
@@ -265,7 +262,6 @@ bot.on('message', async (msg) => {
 
       const res = await saveOrUpdate(data, shareloc);
 
-      // ===== NOTIF MCU =====
       if (res.type === 'insert') {
         await bot.sendMessage(msg.chat.id,
           `🆕 Data Baru sudah Dicatet ke Google Sheet ✅`);
@@ -274,7 +270,6 @@ bot.on('message', async (msg) => {
           `🔄 Data berhasil di-update ke Google Sheet ✅`);
       }
 
-      // ===== NOTIF SHARELOK =====
       if (res.shareChanged) {
         await bot.sendMessage(msg.chat.id,
           `📍 Sharelok berhasil di-update ke Google Sheet ✅`);
