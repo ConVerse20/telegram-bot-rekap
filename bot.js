@@ -14,6 +14,9 @@ const bot = new TelegramBot(TOKEN, { webHook: true });
 const app = express();
 app.use(express.json());
 
+// ===== SHARELOK BUFFER =====
+const lastLocation = {};
+
 // ===== GOOGLE AUTH =====
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
@@ -43,7 +46,7 @@ app.listen(PORT, async () => {
 });
 
 // ==============================
-// 🔥 PARSER MCU (FIX UTAMA)
+// 🔥 PARSER MCU (STABIL)
 // ==============================
 function extractMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
@@ -51,14 +54,19 @@ function extractMCU(text) {
   return parts.map(p => "MEDICAL CHECK UP PELANGGAN :" + p);
 }
 
+// 🔥 FIX FIELD BIAR RAPI
 function getField(block, label) {
-  const regex = new RegExp(`${label}\\s*:\\s*(.*)`, 'i');
+  const regex = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
   const match = block.match(regex);
 
   if (!match) return '';
 
-  let val = match[1].trim();
-  if (!val || val === '-' || val === ':') return '';
+  let val = match[1]
+    .replace(label, '')
+    .replace(/:/g, '')
+    .trim();
+
+  if (!val || val === '-') return '';
 
   return val;
 }
@@ -84,16 +92,6 @@ function parseMCU(block) {
 }
 
 // ==============================
-// 📍 SHARELOK
-// ==============================
-function getShareloc(msg) {
-  if (msg.location) {
-    return `${msg.location.latitude},${msg.location.longitude}`;
-  }
-  return '';
-}
-
-// ==============================
 // 💾 SAVE / UPDATE
 // ==============================
 async function saveOrUpdate(data, shareloc) {
@@ -108,6 +106,7 @@ async function saveOrUpdate(data, shareloc) {
   const rows = res.data.values || [];
   let rowIndex = rows.findIndex(r => r[2] === data.tiket);
 
+  // ===== UPDATE =====
   if (rowIndex !== -1) {
     let row = rows[rowIndex];
 
@@ -115,6 +114,7 @@ async function saveOrUpdate(data, shareloc) {
       row[4] = row[4] ? row[4] + ' / ' + data.cp : data.cp;
     }
 
+    row[1] = data.status || row[1];
     row[5] = data.penyebab || row[5];
     row[6] = data.perbaikan || row[6];
     row[7] = data.alamat || row[7];
@@ -132,6 +132,7 @@ async function saveOrUpdate(data, shareloc) {
     return 'update';
   }
 
+  // ===== INSERT =====
   const values = [[
     moment().format('YYYY-MM-DD HH:mm:ss'),
     data.status || '',
@@ -157,7 +158,7 @@ async function saveOrUpdate(data, shareloc) {
 }
 
 // ==============================
-// 🔍 /cek (AMAN)
+// 🔍 /cek
 // ==============================
 bot.onText(/\/cek (.+)/, async (msg, match) => {
   if (msg.chat.type !== 'private') return;
@@ -189,23 +190,22 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
 });
 
 // ==============================
-// 🤖 HANDLE MESSAGE (ANTI DIEM)
+// 🤖 HANDLE MESSAGE
 // ==============================
 bot.on('message', async (msg) => {
   try {
     let text = msg.text || msg.caption || '';
 
-    console.log('📩 MASUK:', text.slice(0, 100));
+    // 🔥 SIMPAN SHARELOK
+    if (msg.location) {
+      lastLocation[msg.from.id] =
+        `${msg.location.latitude},${msg.location.longitude}`;
+    }
 
     if (!/MEDICAL\s*CHECK\s*UP/i.test(text)) return;
 
     const blocks = extractMCU(text);
-    const shareloc = getShareloc(msg);
-
-    if (blocks.length === 0) {
-      console.log('❌ MCU tidak ke-detect');
-      return;
-    }
+    const shareloc = lastLocation[msg.from.id] || '';
 
     for (let block of blocks) {
       const data = parseMCU(block);
@@ -224,20 +224,17 @@ bot.on('message', async (msg) => {
 
       if (kosong.length > 0) {
         bot.sendMessage(msg.chat.id,
-          `⚠️ ${username} data belum lengkap (${kosong.join(', ')})`
-        );
+          `⚠️ ${username} data belum lengkap (${kosong.join(', ')})`);
       }
 
       if (result === 'insert') {
         bot.sendMessage(msg.chat.id,
-          `🆕 Data Baru sudah Dicatet ke Google Sheet ✅`
-        );
+          `🆕 Data Baru sudah Dicatet ke Google Sheet ✅`);
       }
 
       if (result === 'update') {
         bot.sendMessage(msg.chat.id,
-          `🔄 Data berhasil di-update ke Google Sheet ✅`
-        );
+          `🔄 Data berhasil di-update ke Google Sheet ✅`);
       }
     }
 
