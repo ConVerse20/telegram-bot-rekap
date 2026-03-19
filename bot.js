@@ -88,43 +88,30 @@ function parseMCU(block) {
 }
 
 // ==============================
-// 📍 SHARELOK SUPER FIX (ALL CASE)
+// 📍 SHARELOK FIX
 // ==============================
 function extractLocation(msg) {
-  // 1. normal
-  if (msg.location) {
-    return `${msg.location.latitude},${msg.location.longitude}`;
-  }
+  if (msg.location) return `${msg.location.latitude},${msg.location.longitude}`;
 
-  // 2. venue
-  if (msg.venue && msg.venue.location) {
+  if (msg.venue && msg.venue.location)
     return `${msg.venue.location.latitude},${msg.venue.location.longitude}`;
-  }
 
   const text = msg.text || msg.caption || '';
 
-  // 3. koordinat langsung
   let match = text.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
   if (match) return `${match[1]},${match[2]}`;
 
-  // 4. maps url
   match = text.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (match) return `${match[1]},${match[2]}`;
 
   match = text.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (match) return `${match[1]},${match[2]}`;
 
-  // 5. entities (forward map 🔥)
   const entities = msg.entities || msg.caption_entities || [];
-
   for (let ent of entities) {
     if (ent.type === 'url') {
       const url = text.substring(ent.offset, ent.offset + ent.length);
-
       let m = url.match(/(-?\d+\.\d+),(-?\d+\.\d+)/);
-      if (m) return `${m[1]},${m[2]}`;
-
-      m = url.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
       if (m) return `${m[1]},${m[2]}`;
     }
   }
@@ -133,7 +120,7 @@ function extractLocation(msg) {
 }
 
 // ==============================
-// 💾 SAVE / UPDATE (BY INET)
+// 💾 SAVE / UPDATE (RETURN DETAIL)
 // ==============================
 async function saveOrUpdate(data, shareloc) {
   const client = await auth.getClient();
@@ -150,10 +137,11 @@ async function saveOrUpdate(data, shareloc) {
     r[3] && data.inet && r[3].trim() === data.inet.trim()
   );
 
+  let sharelokChanged = false;
+
   if (rowIndex !== -1) {
     let row = rows[rowIndex];
 
-    // CP append
     if (data.cp) {
       let existing = row[4] ? row[4].split(' / ') : [];
       if (!existing.includes(data.cp)) existing.push(data.cp);
@@ -168,7 +156,10 @@ async function saveOrUpdate(data, shareloc) {
     row[8] = data.odp || row[8];
     row[9] = data.petugas || row[9];
 
-    if (shareloc) row[10] = shareloc;
+    if (shareloc && shareloc !== row[10]) {
+      row[10] = shareloc;
+      sharelokChanged = true;
+    }
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
@@ -177,7 +168,7 @@ async function saveOrUpdate(data, shareloc) {
       resource: { values: [row] }
     });
 
-    return 'update';
+    return { type: 'update', sharelokChanged };
   }
 
   const values = [[
@@ -201,40 +192,8 @@ async function saveOrUpdate(data, shareloc) {
     resource: { values }
   });
 
-  return 'insert';
+  return { type: 'insert', sharelokChanged: !!shareloc };
 }
-
-// ==============================
-// 🔍 /cek
-// ==============================
-bot.onText(/\/cek (.+)/, async (msg, match) => {
-  if (msg.chat.type !== 'private') return;
-
-  const inet = match[1];
-
-  const client = await auth.getClient();
-  const sheets = google.sheets({ version: 'v4', auth: client });
-
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: 'DATA!A:K',
-  });
-
-  const rows = res.data.values || [];
-  const row = rows.find(r => r[3] === inet);
-
-  if (!row) return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
-
-  await bot.sendMessage(msg.chat.id,
-`📡 INTERNET : ${row[3]}
-📞 CP : ${row[4] || '-'}
-📍 ALAMAT : ${row[7]}`);
-
-  if (row[10]) {
-    const [lat, lng] = row[10].split(',');
-    await bot.sendLocation(msg.chat.id, parseFloat(lat), parseFloat(lng));
-  }
-});
 
 // ==============================
 // 🤖 HANDLE MESSAGE
@@ -243,55 +202,60 @@ bot.on('message', async (msg) => {
   try {
     const text = msg.text || msg.caption || '';
 
+    // ===== SIMPAN SHARELOK =====
     const loc = extractLocation(msg);
     if (loc) {
-      lastLocation[msg.from.id] = loc;
       lastLocation[msg.chat.id] = loc;
+      if (msg.from?.id) {
+        lastLocation[msg.from.id] = loc;
+        lastLocation[msg.chat.id + '_' + msg.from.id] = loc;
+      }
+      lastLocation['last'] = loc;
     }
 
     if (!/MEDICAL\s*CHECK\s*UP/i.test(text)) return;
 
-    await delay(1500); // 🔥 anti miss sharelok
+    await delay(1500);
 
     const blocks = extractMCU(text);
 
     const shareloc =
-      lastLocation[msg.from.id] ||
+      lastLocation[msg.chat.id + '_' + msg.from?.id] ||
+      lastLocation[msg.from?.id] ||
       lastLocation[msg.chat.id] ||
+      lastLocation['last'] ||
       '';
 
     for (let block of blocks) {
       const data = parseMCU(block);
-
       if (!data.inet) continue;
 
       const result = await saveOrUpdate(data, shareloc);
 
-      const username = msg.from?.username
-        ? '@' + msg.from.username
-        : msg.from.first_name;
-
-      let kosong = [];
-      if (!data.odp) kosong.push('ODP');
-      if (!data.petugas) kosong.push('PETUGAS');
-
-      if (kosong.length > 0) {
-        await bot.sendMessage(msg.chat.id,
-          `⚠️ ${username} data belum lengkap (${kosong.join(', ')})`);
-      }
-
-      if (result === 'insert') {
+      // ===== NOTIF MCU =====
+      if (result.type === 'insert') {
         await bot.sendMessage(msg.chat.id,
           `🆕 Data Baru sudah Dicatet ke Google Sheet ✅`);
       }
 
-      if (result === 'update') {
+      if (result.type === 'update') {
         await bot.sendMessage(msg.chat.id,
           `🔄 Data berhasil di-update ke Google Sheet ✅`);
+      }
+
+      // ===== NOTIF SHARELOK =====
+      if (result.sharelokChanged) {
+        if (result.type === 'insert') {
+          await bot.sendMessage(msg.chat.id,
+            `📍 Sharelok Baru sudah Dicatet ke Google Sheet ✅`);
+        } else {
+          await bot.sendMessage(msg.chat.id,
+            `📍 Sharelok berhasil di-update ke Google Sheet ✅`);
+        }
       }
     }
 
   } catch (err) {
-    console.error('❌ ERROR:', err);
+    console.error(err);
   }
 });
