@@ -1,5 +1,5 @@
 const { google } = require('googleapis');
-const moment = require('moment-timezone');
+const moment = require('moment');
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const cron = require('node-cron');
@@ -27,6 +27,8 @@ process.on('unhandledRejection', console.error);
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
 );
+
+// FIX PRIVATE KEY
 creds.private_key = creds.private_key.replace(/\\n/g, '\n');
 
 const auth = new google.auth.GoogleAuth({
@@ -46,6 +48,11 @@ app.listen(PORT, async () => {
   await bot.setWebHook(`${URL}/webhook`);
   console.log('🚀 BOT SIAP FULL');
 });
+
+// ===== TIME WIB =====
+function getWIB() {
+  return moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
+}
 
 // ===== PARSER =====
 function parseLaporan(text = '') {
@@ -131,14 +138,12 @@ async function saveToSheet(data, location = '') {
   const rows = res.data.values || [];
   const rowIndex = rows.findIndex(r => r[2] === data.tiket);
 
-  const waktu = moment().tz('Asia/Jakarta').format('YYYY-MM-DD HH:mm:ss');
-
   if (rowIndex !== -1) {
     const oldCP = rows[rowIndex][4] || '';
     const finalCP = mergeCP(oldCP, data.cp);
 
     const newRow = [[
-      waktu,
+      getWIB(),
       data.status,
       data.tiket,
       data.inet,
@@ -167,7 +172,7 @@ async function saveToSheet(data, location = '') {
     valueInputOption: 'USER_ENTERED',
     resource: {
       values: [[
-        waktu,
+        getWIB(),
         data.status,
         data.tiket,
         data.inet,
@@ -195,7 +200,7 @@ function formatDataOutput(data) {
 📌 Lokasi   : ${data.lokasi || '-'}`;
 }
 
-// ===== CARI DATA =====
+// ===== CEK DATA =====
 async function cariDataByInet(inet) {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
@@ -245,8 +250,10 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
 
     await bot.sendLocation(msg.chat.id, parseFloat(lat), parseFloat(lon));
 
-    const maps = `https://maps.google.com/?q=${data.lokasi}`;
-    await bot.sendMessage(msg.chat.id, `🗺️ Maps:\n${maps}`);
+    await bot.sendMessage(
+      msg.chat.id,
+      `🗺️ https://maps.google.com/?q=${data.lokasi}`
+    );
   }
 });
 
@@ -269,7 +276,11 @@ bot.on('message', async (msg) => {
 Harap dilengkapi ${username}`);
     }
 
-    const result = await saveToSheet(data);
+    const location = msg.location
+      ? `${msg.location.latitude},${msg.location.longitude}`
+      : '';
+
+    const result = await saveToSheet(data, location);
 
     bot.sendMessage(msg.chat.id,
       result === 'update'
@@ -284,7 +295,9 @@ Harap dilengkapi ${username}`);
 });
 
 // ===== REKAP =====
-async function kirimRekapHarian() {
+cron.schedule('0 17 * * *', async () => {
+  if (!GROUP_ID) return;
+
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
 
@@ -294,7 +307,7 @@ async function kirimRekapHarian() {
   });
 
   const rows = res.data.values || [];
-  const today = moment().tz('Asia/Jakarta').format('YYYY-MM-DD');
+  const today = moment().utcOffset(7).format('YYYY-MM-DD');
 
   let total = 0, close = 0, open = 0;
 
@@ -303,20 +316,14 @@ async function kirimRekapHarian() {
     if (!r[0]?.includes(today)) return;
 
     total++;
-    if ((r[1] || '').toUpperCase().includes('CLOSE')) close++;
+    if ((r[1] || '').includes('CLOSE')) close++;
     else open++;
   });
 
-  if (GROUP_ID) {
-    bot.sendMessage(GROUP_ID,
+  bot.sendMessage(GROUP_ID,
 `📊 REKAP HARI INI
-Tanggal: ${today}
 
-Total: ${total}
-Close: ${close}
-Open: ${open}`);
-  }
-}
-
-// ===== CRON =====
-cron.schedule('0 17 * * *', kirimRekapHarian);
+Total : ${total}
+Close : ${close}
+Open  : ${open}`);
+});
