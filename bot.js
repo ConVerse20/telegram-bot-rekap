@@ -40,6 +40,7 @@ app.listen(PORT, async () => {
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
+// normalize display
 function normalizeCP(cp) {
   if (!cp) return '';
   cp = cp.replace(/\s+/g, '');
@@ -53,20 +54,28 @@ function normalizeCP(cp) {
   }).join(' / ');
 }
 
-// buat bandingin CP biar ga duplicate
+// normalize compare (anti duplicate)
 function normalizeCompare(cp) {
   return cp.replace(/\D/g, '').replace(/^0/, '62');
+}
+
+function explodeCP(cp) {
+  if (!cp) return [];
+  return cp.split('/').map(n => normalizeCompare(n));
 }
 
 // =======================
 // 📍 SHARELOK
 // =======================
 function getLocation(msg) {
-  if (msg.location) return `${msg.location.latitude},${msg.location.longitude}`;
+  if (msg.location)
+    return `${msg.location.latitude},${msg.location.longitude}`;
+
   if (msg.reply_to_message?.location)
     return `${msg.reply_to_message.location.latitude},${msg.reply_to_message.location.longitude}`;
 
   const text = msg.text || msg.caption || '';
+
   let m = text.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
   if (m) return `${m[1]},${m[2]}`;
 
@@ -93,6 +102,7 @@ function addBuffer(chatId, msg) {
 function splitMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
   parts.shift();
+
   return parts.map(p => {
     let clean = p.split(/contoh\s*:/i)[0];
     return "MEDICAL CHECK UP PELANGGAN :" + clean;
@@ -118,7 +128,7 @@ function parseMCU(txt) {
     penyebab: get('PENYEBAB GANGGUAN', txt),
     perbaikan: get('LANGKAH PERBAIKAN', txt),
     alamat: get('ALAMAT LENGKAP', txt),
-    odp: get('NAMA ODP', txt),
+    odp: get('NAMA ODP', txt).trim(),
     petugas: get('PETUGAS', txt),
   };
 }
@@ -170,16 +180,19 @@ async function saveData(data, loc) {
     let old = rows[idx];
     while (old.length < 11) old.push('');
 
-    // 🔥 FIX DUPLICATE CP
+    // ===== FIX CP DUPLICATE =====
     if (data.cp) {
-      let existing = old[4] ? old[4].split(' / ') : [];
-      let newCP = normalizeCompare(data.cp);
+      let existingRaw = old[4] ? old[4].split(' / ') : [];
+      let existingClean = existingRaw.map(e => normalizeCompare(e));
+      let newList = explodeCP(data.cp);
 
-      let exists = existing.some(e => normalizeCompare(e) === newCP);
+      newList.forEach(n => {
+        if (!existingClean.includes(n)) {
+          existingRaw.push('+62' + n.replace(/^62/, ''));
+        }
+      });
 
-      if (!exists) existing.push(data.cp);
-
-      old[4] = existing.join(' / ');
+      old[4] = existingRaw.join(' / ');
     }
 
     if (data.status) old[1] = data.status;
@@ -246,7 +259,7 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
 });
 
 // =======================
-// 🚀 MAIN (MESSAGE + EDIT)
+// 🚀 MAIN ENGINE
 // =======================
 bot.on('message', handleMsg);
 bot.on('edited_message', handleMsg);
@@ -280,16 +293,20 @@ async function handleMsg(msg) {
 
       const shareloc = lastLocation[chatId] || '';
 
-      // 🔥 REMINDER DINAMIS
+      // ===== REMINDER WAJIB =====
       const fields = {
-        CP: data.cp,
-        ODP: data.odp,
-        PETUGAS: data.petugas,
-        "NO TIKET": data.tiket,
-        ALAMAT: data.alamat
+        "INET/TLP": data.inet,
+        "CP PELANGGAN": data.cp,
+        "ALAMAT LENGKAP": data.alamat,
+        "NAMA ODP": data.odp,
+        "PETUGAS": data.petugas
       };
 
-      const kosong = Object.keys(fields).filter(k => !fields[k]);
+      const kosong = Object.keys(fields).filter(k => {
+        const v = fields[k];
+        return !v || v.trim() === '';
+      });
+
       const semuaKosong = Object.values(fields).every(v => !v);
 
       if (kosong.length && !semuaKosong) {
