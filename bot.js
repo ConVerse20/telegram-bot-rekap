@@ -15,7 +15,7 @@ const app = express();
 app.use(express.json());
 
 // ===== BUFFER SHARELOK =====
-const lastLocation = {};
+const lastLocation = {}; // key: from.id & chat.id
 
 // ===== GOOGLE AUTH =====
 const creds = JSON.parse(
@@ -31,7 +31,11 @@ const auth = new google.auth.GoogleAuth({
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
   res.sendStatus(200);
-  bot.processUpdate(req.body);
+  try {
+    bot.processUpdate(req.body);
+  } catch (e) {
+    console.error('Webhook error:', e);
+  }
 });
 
 // ===== START =====
@@ -42,7 +46,14 @@ app.listen(PORT, async () => {
 });
 
 // ==============================
-// 🔥 PARSER
+// 🧰 UTIL
+// ==============================
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ==============================
+// 🔥 PARSER MCU
 // ==============================
 function extractMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
@@ -57,20 +68,15 @@ function getField(block, label) {
 
   let val = match[1].replace(/:/g, '').trim();
   if (!val || val === '-') return '';
-
   return val;
 }
 
 function parseMCU(block) {
   let cp = getField(block, 'CP PELANGGAN');
 
-  // 🔥 bersihin spasi
+  // bersihin spasi & amanin +62
   cp = cp.replace(/\s+/g, '');
-
-  // 🔥 amankan +62
-  if (cp && cp.startsWith('+')) {
-    cp = `'${cp}`;
-  }
+  if (cp && cp.startsWith('+')) cp = `'${cp}`;
 
   return {
     status: getField(block, 'STATUS'),
@@ -86,24 +92,19 @@ function parseMCU(block) {
 }
 
 // ==============================
-// 📍 SHARELOK SUPER FIX
+// 📍 SHARELOK (normal + venue + forward)
 // ==============================
 function extractLocation(msg) {
-  // lokasi normal
   if (msg.location) {
     return `${msg.location.latitude},${msg.location.longitude}`;
   }
-
-  // venue (share location tertentu)
   if (msg.venue && msg.venue.location) {
     return `${msg.venue.location.latitude},${msg.venue.location.longitude}`;
   }
-
-  // forward location (kadang beda format)
+  // beberapa forward tetap bawa msg.location
   if (msg.forward_from && msg.location) {
     return `${msg.location.latitude},${msg.location.longitude}`;
   }
-
   return '';
 }
 
@@ -121,7 +122,7 @@ async function saveOrUpdate(data, shareloc) {
 
   const rows = res.data.values || [];
 
-  // 🔥 DUPLICATE BERDASARKAN INET
+  // duplicate by INET (kolom D = index 3)
   let rowIndex = rows.findIndex(r =>
     r[3] && data.inet && r[3].trim() === data.inet.trim()
   );
@@ -130,14 +131,10 @@ async function saveOrUpdate(data, shareloc) {
   if (rowIndex !== -1) {
     let row = rows[rowIndex];
 
-    // 🔥 CP APPEND TANPA DUPLIKAT
+    // CP append tanpa duplikat
     if (data.cp) {
       let existing = row[4] ? row[4].split(' / ') : [];
-
-      if (!existing.includes(data.cp)) {
-        existing.push(data.cp);
-      }
-
+      if (!existing.includes(data.cp)) existing.push(data.cp);
       row[4] = existing.join(' / ');
     }
 
@@ -149,7 +146,7 @@ async function saveOrUpdate(data, shareloc) {
     row[8] = data.odp || row[8];
     row[9] = data.petugas || row[9];
 
-    // 🔥 SHARELOK UPDATE
+    // sharelok overwrite terbaru
     if (shareloc) {
       row[10] = shareloc;
     }
@@ -166,7 +163,7 @@ async function saveOrUpdate(data, shareloc) {
 
   // ===== INSERT =====
   const values = [[
-    moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss'),
+    moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss'), // WIB
     data.status || '',
     data.tiket || '',
     data.inet || '',
@@ -210,33 +207,38 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
 
   if (!row) return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
 
-  bot.sendMessage(msg.chat.id,
+  await bot.sendMessage(msg.chat.id,
 `📡 INTERNET : ${row[3]}
-📞 CP : ${row[4] || '-'}
-📍 ALAMAT : ${row[7]}`);
+📞 CP       : ${row[4] || '-'}
+📍 ALAMAT   : ${row[7]}`);
 
   if (row[10]) {
     const [lat, lng] = row[10].split(',');
-    bot.sendLocation(msg.chat.id, parseFloat(lat), parseFloat(lng));
+    if (lat && lng) {
+      await bot.sendLocation(msg.chat.id, parseFloat(lat), parseFloat(lng));
+    }
   }
 });
 
 // ==============================
-// 🤖 HANDLE MESSAGE
+// 🤖 HANDLE MESSAGE (GRUP & JAPRI & FORWARD)
 // ==============================
 bot.on('message', async (msg) => {
   try {
-    let text = msg.text || msg.caption || '';
+    const text = msg.text || msg.caption || '';
 
-    // 🔥 AMBIL SHARELOK
+    // === tangkap sharelok (semua tipe) ===
     const loc = extractLocation(msg);
-
     if (loc) {
       lastLocation[msg.from.id] = loc;
       lastLocation[msg.chat.id] = loc;
     }
 
+    // hanya proses jika ada MCU
     if (!/MEDICAL\s*CHECK\s*UP/i.test(text)) return;
+
+    // 🔥 delay biar sharelok sempat masuk (anti miss forward)
+    await delay(1500);
 
     const blocks = extractMCU(text);
 
@@ -248,6 +250,10 @@ bot.on('message', async (msg) => {
     for (let block of blocks) {
       const data = parseMCU(block);
 
+      // skip kalau kosong semua kunci
+      if (!data.inet && !data.tiket && !data.alamat) continue;
+
+      // wajib ada INET untuk index/update
       if (!data.inet) continue;
 
       const result = await saveOrUpdate(data, shareloc);
@@ -256,23 +262,28 @@ bot.on('message', async (msg) => {
         ? '@' + msg.from.username
         : msg.from.first_name;
 
+      // reminder field kosong (tetap save)
       let kosong = [];
       if (!data.odp) kosong.push('ODP');
       if (!data.petugas) kosong.push('PETUGAS');
 
       if (kosong.length > 0) {
-        bot.sendMessage(msg.chat.id,
-          `⚠️ ${username} data belum lengkap (${kosong.join(', ')})`);
+        await bot.sendMessage(
+          msg.chat.id,
+          `⚠️ ${username} data belum lengkap (${kosong.join(', ')})`
+        );
       }
 
       if (result === 'insert') {
-        bot.sendMessage(msg.chat.id,
-          `🆕 Data Baru sudah Dicatet ke Google Sheet ✅`);
-      }
-
-      if (result === 'update') {
-        bot.sendMessage(msg.chat.id,
-          `🔄 Data berhasil di-update ke Google Sheet ✅`);
+        await bot.sendMessage(
+          msg.chat.id,
+          `🆕 Data Baru sudah Dicatet ke Google Sheet ✅`
+        );
+      } else if (result === 'update') {
+        await bot.sendMessage(
+          msg.chat.id,
+          `🔄 Data berhasil di-update ke Google Sheet ✅`
+        );
       }
     }
 
