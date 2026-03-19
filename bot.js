@@ -31,11 +31,7 @@ const auth = new google.auth.GoogleAuth({
 // ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
   res.sendStatus(200);
-  try {
-    bot.processUpdate(req.body);
-  } catch (e) {
-    console.error(e);
-  }
+  bot.processUpdate(req.body);
 });
 
 // ===== START =====
@@ -46,14 +42,7 @@ app.listen(PORT, async () => {
 });
 
 // ==============================
-// 🔥 VALIDASI TIKET
-// ==============================
-function isValidTiket(tiket) {
-  return /^INC\d+/i.test(tiket || '');
-}
-
-// ==============================
-// 🔥 PARSER MCU
+// 🔥 PARSER
 // ==============================
 function extractMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
@@ -64,14 +53,9 @@ function extractMCU(text) {
 function getField(block, label) {
   const regex = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
   const match = block.match(regex);
-
   if (!match) return '';
 
-  let val = match[1]
-    .replace(label, '')
-    .replace(/:/g, '')
-    .trim();
-
+  let val = match[1].replace(/:/g, '').trim();
   if (!val || val === '-') return '';
 
   return val;
@@ -80,6 +64,10 @@ function getField(block, label) {
 function parseMCU(block) {
   let cp = getField(block, 'CP PELANGGAN');
 
+  // 🔥 bersihin spasi
+  cp = cp.replace(/\s+/g, '');
+
+  // 🔥 amankan +62
   if (cp && cp.startsWith('+')) {
     cp = `'${cp}`;
   }
@@ -98,7 +86,17 @@ function parseMCU(block) {
 }
 
 // ==============================
-// 💾 SAVE / UPDATE (FIX FINAL)
+// 📍 SHARELOK
+// ==============================
+function extractLocation(msg) {
+  if (msg.location) {
+    return `${msg.location.latitude},${msg.location.longitude}`;
+  }
+  return '';
+}
+
+// ==============================
+// 💾 SAVE / UPDATE (BY INET)
 // ==============================
 async function saveOrUpdate(data, shareloc) {
   const client = await auth.getClient();
@@ -111,28 +109,38 @@ async function saveOrUpdate(data, shareloc) {
 
   const rows = res.data.values || [];
 
-  let rowIndex = -1;
-
-  // 🔥 hanya cek update jika tiket valid
-  if (isValidTiket(data.tiket)) {
-    rowIndex = rows.findIndex(r => r[2] === data.tiket);
-  }
+  // 🔥 DUPLICATE BERDASARKAN INET
+  let rowIndex = rows.findIndex(r => {
+    return r[3] && data.inet && r[3].trim() === data.inet.trim();
+  });
 
   // ===== UPDATE =====
   if (rowIndex !== -1) {
     let row = rows[rowIndex];
 
-    if (data.cp && !row[4]?.includes(data.cp)) {
-      row[4] = row[4] ? row[4] + ' / ' + data.cp : data.cp;
+    // 🔥 CP APPEND TANPA DUPLIKAT
+    if (data.cp) {
+      let existing = row[4] ? row[4].split(' / ') : [];
+
+      if (!existing.includes(data.cp)) {
+        existing.push(data.cp);
+      }
+
+      row[4] = existing.join(' / ');
     }
 
     row[1] = data.status || row[1];
+    row[2] = data.tiket || row[2];
     row[5] = data.penyebab || row[5];
     row[6] = data.perbaikan || row[6];
     row[7] = data.alamat || row[7];
     row[8] = data.odp || row[8];
     row[9] = data.petugas || row[9];
-    row[10] = shareloc || row[10];
+
+    // 🔥 SHARELOK UPDATE TERBARU
+    if (shareloc) {
+      row[10] = shareloc;
+    }
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
@@ -144,9 +152,9 @@ async function saveOrUpdate(data, shareloc) {
     return 'update';
   }
 
-  // ===== INSERT (tetap masuk walau kosong) =====
+  // ===== INSERT =====
   const values = [[
-    moment().format('YYYY-MM-DD HH:mm:ss'),
+    moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss'), // 🔥 WIB
     data.status || '',
     data.tiket || '',
     data.inet || '',
@@ -170,7 +178,7 @@ async function saveOrUpdate(data, shareloc) {
 }
 
 // ==============================
-// 🔍 /cek
+// 🔍 /cek (PRIVATE ONLY)
 // ==============================
 bot.onText(/\/cek (.+)/, async (msg, match) => {
   if (msg.chat.type !== 'private') return;
@@ -208,10 +216,10 @@ bot.on('message', async (msg) => {
   try {
     let text = msg.text || msg.caption || '';
 
-    // 🔥 SIMPAN SHARELOK
-    if (msg.location) {
-      lastLocation[msg.from.id] =
-        `${msg.location.latitude},${msg.location.longitude}`;
+    // 🔥 SHARELOK SIMPAN
+    const loc = extractLocation(msg);
+    if (loc) {
+      lastLocation[msg.from.id] = loc;
     }
 
     if (!/MEDICAL\s*CHECK\s*UP/i.test(text)) return;
@@ -222,7 +230,7 @@ bot.on('message', async (msg) => {
     for (let block of blocks) {
       const data = parseMCU(block);
 
-      if (!data.tiket && !data.inet && !data.alamat) continue;
+      if (!data.inet) continue;
 
       const result = await saveOrUpdate(data, shareloc);
 
