@@ -30,8 +30,6 @@ const creds = JSON.parse(
 
 creds.private_key = creds.private_key.replace(/\\n/g, '\n');
 
-console.log('🔑 SERVICE ACCOUNT:', creds.client_email);
-
 const auth = new google.auth.GoogleAuth({
   credentials: creds,
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
@@ -43,18 +41,15 @@ app.post('/webhook', (req, res) => {
   try {
     bot.processUpdate(req.body);
   } catch (e) {
-    console.error('❌ Webhook error:', e);
+    console.error(e);
   }
 });
 
 // ===== START =====
 app.listen(PORT, async () => {
-  console.log('🚀 BOT SIAP FULL');
-
   await bot.deleteWebHook();
   await bot.setWebHook(`${URL}/webhook`);
-
-  console.log('✅ Webhook aktif');
+  console.log('🚀 BOT SIAP FULL');
 });
 
 // ===== PARSER =====
@@ -102,19 +97,63 @@ function parseLaporan(text = '') {
   return result;
 }
 
+// ===== 🔥 MERGE CP =====
+function mergeCP(oldCP = '', newCP = '') {
+  if (!newCP) return oldCP;
+
+  const list = oldCP
+    ? oldCP.split('/').map(x => x.trim()).filter(Boolean)
+    : [];
+
+  if (list.includes(newCP)) return oldCP;
+
+  list.push(newCP);
+
+  return list.join(' / ');
+}
+
 // ===== SAVE / UPDATE =====
-async function saveToSheet(data) {
+async function saveToSheet(data, location = null) {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
-    range: 'DATA!A:J',
+    range: 'DATA!A:K',
   });
 
   const rows = res.data.values || [];
-
   const rowIndex = rows.findIndex(r => r[2] === data.tiket);
+
+  if (rowIndex !== -1) {
+    const existing = rows[rowIndex];
+
+    const oldCP = existing[4] || '';
+    const finalCP = mergeCP(oldCP, data.cp);
+
+    const newRow = [[
+      moment().format('YYYY-MM-DD HH:mm:ss'),
+      data.status,
+      data.tiket,
+      data.inet,
+      finalCP,
+      data.penyebab,
+      data.perbaikan,
+      data.alamat,
+      data.odp,
+      data.petugas,
+      location || existing[10] || ''
+    ]];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `DATA!A${rowIndex + 1}:K${rowIndex + 1}`,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: newRow }
+    });
+
+    return 'update';
+  }
 
   const newRow = [[
     moment().format('YYYY-MM-DD HH:mm:ss'),
@@ -126,22 +165,13 @@ async function saveToSheet(data) {
     data.perbaikan,
     data.alamat,
     data.odp,
-    data.petugas
+    data.petugas,
+    location || ''
   ]];
-
-  if (rowIndex !== -1) {
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID,
-      range: `DATA!A${rowIndex + 1}:J${rowIndex + 1}`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values: newRow }
-    });
-    return 'update';
-  }
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
-    range: 'DATA!A:J',
+    range: 'DATA!A:K',
     valueInputOption: 'USER_ENTERED',
     resource: { values: newRow }
   });
@@ -184,39 +214,26 @@ Total Tiket : ${total}
 CLOSE       : ${close}
 OPEN/LOS    : ${open}`;
 
-  if (GROUP_ID) {
-    await bot.sendMessage(GROUP_ID, text);
-  }
+  if (GROUP_ID) await bot.sendMessage(GROUP_ID, text);
 }
 
-// ===== CRON JAM 17 =====
+// ===== CRON =====
 cron.schedule('0 17 * * *', () => {
-  console.log('⏰ REKAP AUTO');
+  console.log('⏰ AUTO REKAP');
   kirimRekapHarian();
 });
 
 // ===== COMMAND =====
-bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, '🤖 Bot siap 🔥');
-});
-
 bot.onText(/\/rekap/, async (msg) => {
   await kirimRekapHarian();
 });
 
-// ===== HANDLE MESSAGE =====
+// ===== HANDLE TEXT =====
 bot.on('message', async (msg) => {
   try {
     if (!msg.text) return;
 
-    const isPrivate = msg.chat.type === 'private';
-
-    if (!msg.text.toUpperCase().includes('NO TIKET')) {
-      if (isPrivate) {
-        return bot.sendMessage(msg.chat.id, '❌ Format salah');
-      }
-      return;
-    }
+    if (!msg.text.toUpperCase().includes('NO TIKET')) return;
 
     const data = parseLaporan(msg.text);
     if (!data.tiket) return;
@@ -232,5 +249,21 @@ bot.on('message', async (msg) => {
   } catch (err) {
     console.error(err.message);
     bot.sendMessage(msg.chat.id, '❌ Error');
+  }
+});
+
+// ===== HANDLE SHARELOC =====
+bot.on('location', async (msg) => {
+  try {
+    const lat = msg.location.latitude;
+    const lon = msg.location.longitude;
+
+    const lokasi = `${lat},${lon}`;
+
+    bot.sendMessage(msg.chat.id, `📍 Lokasi diterima:\n${lokasi}`);
+
+    // NOTE: kalau mau auto attach ke tiket terakhir → next level
+  } catch (err) {
+    console.error(err);
   }
 });
