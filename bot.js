@@ -14,7 +14,7 @@ const bot = new TelegramBot(TOKEN, { webHook: true });
 const app = express();
 app.use(express.json());
 
-// ===== SHARELOK BUFFER =====
+// ===== BUFFER SHARELOK =====
 const lastLocation = {};
 
 // ===== GOOGLE AUTH =====
@@ -86,12 +86,24 @@ function parseMCU(block) {
 }
 
 // ==============================
-// 📍 SHARELOK
+// 📍 SHARELOK SUPER FIX
 // ==============================
 function extractLocation(msg) {
+  // lokasi normal
   if (msg.location) {
     return `${msg.location.latitude},${msg.location.longitude}`;
   }
+
+  // venue (share location tertentu)
+  if (msg.venue && msg.venue.location) {
+    return `${msg.venue.location.latitude},${msg.venue.location.longitude}`;
+  }
+
+  // forward location (kadang beda format)
+  if (msg.forward_from && msg.location) {
+    return `${msg.location.latitude},${msg.location.longitude}`;
+  }
+
   return '';
 }
 
@@ -110,9 +122,9 @@ async function saveOrUpdate(data, shareloc) {
   const rows = res.data.values || [];
 
   // 🔥 DUPLICATE BERDASARKAN INET
-  let rowIndex = rows.findIndex(r => {
-    return r[3] && data.inet && r[3].trim() === data.inet.trim();
-  });
+  let rowIndex = rows.findIndex(r =>
+    r[3] && data.inet && r[3].trim() === data.inet.trim()
+  );
 
   // ===== UPDATE =====
   if (rowIndex !== -1) {
@@ -137,7 +149,7 @@ async function saveOrUpdate(data, shareloc) {
     row[8] = data.odp || row[8];
     row[9] = data.petugas || row[9];
 
-    // 🔥 SHARELOK UPDATE TERBARU
+    // 🔥 SHARELOK UPDATE
     if (shareloc) {
       row[10] = shareloc;
     }
@@ -154,7 +166,7 @@ async function saveOrUpdate(data, shareloc) {
 
   // ===== INSERT =====
   const values = [[
-    moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss'), // 🔥 WIB
+    moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss'),
     data.status || '',
     data.tiket || '',
     data.inet || '',
@@ -216,16 +228,22 @@ bot.on('message', async (msg) => {
   try {
     let text = msg.text || msg.caption || '';
 
-    // 🔥 SHARELOK SIMPAN
+    // 🔥 AMBIL SHARELOK
     const loc = extractLocation(msg);
+
     if (loc) {
       lastLocation[msg.from.id] = loc;
+      lastLocation[msg.chat.id] = loc;
     }
 
     if (!/MEDICAL\s*CHECK\s*UP/i.test(text)) return;
 
     const blocks = extractMCU(text);
-    const shareloc = lastLocation[msg.from.id] || '';
+
+    const shareloc =
+      lastLocation[msg.from.id] ||
+      lastLocation[msg.chat.id] ||
+      '';
 
     for (let block of blocks) {
       const data = parseMCU(block);
