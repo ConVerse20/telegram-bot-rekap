@@ -11,8 +11,6 @@ const express = require('express');
 const TOKEN = process.env.BOT_TOKEN;
 const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 3000;
-
-// 🔥 PAKAI ENV YANG SUDAH ADA (JANGAN TAMBAH BARU)
 const BASE_URL = process.env.BASE_URL || process.env.RAILWAY_STATIC_URL;
 
 // ===== INIT =====
@@ -20,7 +18,7 @@ const bot = new TelegramBot(TOKEN, { webHook: true });
 const app = express();
 app.use(express.json());
 
-// ===== WEBHOOK (JANGAN DIUBAH LAGI) =====
+// ===== WEBHOOK =====
 app.post('/webhook', (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
@@ -28,16 +26,9 @@ app.post('/webhook', (req, res) => {
 
 app.listen(PORT, async () => {
   try {
-    if (!BASE_URL) {
-      console.log('❌ BASE_URL / RAILWAY_STATIC_URL tidak ada');
-      return;
-    }
-
     const webhookUrl = `${BASE_URL}/webhook`;
-
     await bot.deleteWebHook();
     await bot.setWebHook(webhookUrl);
-
     console.log('🚀 WEBHOOK AKTIF:', webhookUrl);
   } catch (e) {
     console.log('❌ WEBHOOK ERROR:', e.message);
@@ -48,37 +39,34 @@ app.listen(PORT, async () => {
 // 🧠 UTIL
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
-const safe = v => (v ? v.toString().trim() : '');
 
 function normalizeCP(cp) {
   if (!cp) return '';
   cp = cp.replace(/\s+/g, '');
   let list = cp.split('/');
 
-  list = list.map(n => {
+  return list.map(n => {
     if (n.startsWith('+62')) return n;
-    if (n.startsWith('62')) return '+' + n;
+    if (n.startsWith('62')) return '+62' + n.slice(2);
     if (n.startsWith('0')) return '+62' + n.slice(1);
     return n;
-  });
+  }).join(' / ');
+}
 
-  return list.join(' / ');
+// buat bandingin CP biar ga duplicate
+function normalizeCompare(cp) {
+  return cp.replace(/\D/g, '').replace(/^0/, '62');
 }
 
 // =======================
-// 📍 SHARELOK (GRUP + FORWARD + REPLY)
+// 📍 SHARELOK
 // =======================
 function getLocation(msg) {
-  if (msg.location) {
-    return `${msg.location.latitude},${msg.location.longitude}`;
-  }
-
-  if (msg.reply_to_message?.location) {
+  if (msg.location) return `${msg.location.latitude},${msg.location.longitude}`;
+  if (msg.reply_to_message?.location)
     return `${msg.reply_to_message.location.latitude},${msg.reply_to_message.location.longitude}`;
-  }
 
   const text = msg.text || msg.caption || '';
-
   let m = text.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
   if (m) return `${m[1]},${m[2]}`;
 
@@ -89,7 +77,7 @@ function getLocation(msg) {
 }
 
 // =======================
-// 📦 BUFFER (ANTI MISS FORWARD)
+// 📦 BUFFER
 // =======================
 const bufferMsg = {};
 const lastLocation = {};
@@ -100,12 +88,11 @@ function addBuffer(chatId, msg) {
 }
 
 // =======================
-// 🧠 PARSER MCU (PANJANG / PENDEK / MULTI)
+// 🧠 PARSER
 // =======================
 function splitMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
   parts.shift();
-
   return parts.map(p => {
     let clean = p.split(/contoh\s*:/i)[0];
     return "MEDICAL CHECK UP PELANGGAN :" + clean;
@@ -115,13 +102,12 @@ function splitMCU(text) {
 function get(label, txt) {
   const r = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
   const m = txt.match(r);
-  return m ? safe(m[1]) : '';
+  return m ? m[1].trim() : '';
 }
 
 function parseMCU(txt) {
   let cp = get('CP PELANGGAN', txt);
 
-  // anti kebawa field lain
   if (/PENYEBAB|LANGKAH|ALAMAT|ODP|PETUGAS/i.test(cp)) cp = '';
 
   return {
@@ -166,16 +152,16 @@ async function saveData(data, loc) {
 
   const row = [
     now,
-    safe(data.status),
-    safe(data.tiket),
-    safe(data.inet),
-    safe(data.cp),
-    safe(data.penyebab),
-    safe(data.perbaikan),
-    safe(data.alamat),
-    safe(data.odp),
-    safe(data.petugas),
-    safe(loc),
+    data.status || '',
+    data.tiket || '',
+    data.inet || '',
+    data.cp || '',
+    data.penyebab || '',
+    data.perbaikan || '',
+    data.alamat || '',
+    data.odp || '',
+    data.petugas || '',
+    loc || '',
   ];
 
   let shareChanged = false;
@@ -184,20 +170,25 @@ async function saveData(data, loc) {
     let old = rows[idx];
     while (old.length < 11) old.push('');
 
-    // CP nambah (tidak overwrite)
+    // 🔥 FIX DUPLICATE CP
     if (data.cp) {
-      let list = old[4] ? old[4].split(' / ') : [];
-      if (!list.includes(data.cp)) list.push(data.cp);
-      old[4] = list.join(' / ');
+      let existing = old[4] ? old[4].split(' / ') : [];
+      let newCP = normalizeCompare(data.cp);
+
+      let exists = existing.some(e => normalizeCompare(e) === newCP);
+
+      if (!exists) existing.push(data.cp);
+
+      old[4] = existing.join(' / ');
     }
 
-    old[1] = data.status || old[1];
-    old[2] = data.tiket || old[2];
-    old[5] = data.penyebab || old[5];
-    old[6] = data.perbaikan || old[6];
-    old[7] = data.alamat || old[7];
-    old[8] = data.odp || old[8];
-    old[9] = data.petugas || old[9];
+    if (data.status) old[1] = data.status;
+    if (data.tiket) old[2] = data.tiket;
+    if (data.penyebab) old[5] = data.penyebab;
+    if (data.perbaikan) old[6] = data.perbaikan;
+    if (data.alamat) old[7] = data.alamat;
+    if (data.odp) old[8] = data.odp;
+    if (data.petugas) old[9] = data.petugas;
 
     if (loc && loc !== old[10]) {
       old[10] = loc;
@@ -225,59 +216,48 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// 🔎 /CEK (GRUP & JAPRI)
+// 🔎 /CEK
 // =======================
 bot.onText(/\/cek (.+)/, async (msg, match) => {
-  try {
-    const inet = match[1].trim();
+  const inet = match[1].trim();
 
-    const client = await auth.getClient();
-    const sheets = google.sheets({ version: 'v4', auth: client });
+  const client = await auth.getClient();
+  const sheets = google.sheets({ version: 'v4', auth: client });
 
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: 'DATA!A:K',
-    });
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range: 'DATA!A:K',
+  });
 
-    const rows = res.data.values || [];
-    const row = rows.find(r => r[3] === inet);
+  const row = res.data.values.find(r => r[3] === inet);
 
-    if (!row) {
-      return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
-    }
+  if (!row) return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
 
-    const text = `
-📡 INTERNET : ${row[3]}
+  await bot.sendMessage(msg.chat.id,
+`📡 INTERNET : ${row[3]}
 📞 CP : ${row[4] || '-'}
 📍 ALAMAT : ${row[7] || '-'}
-🌐 ODP : ${row[8] || '-'}
-`;
+🌐 ODP : ${row[8] || '-'}`);
 
-    await bot.sendMessage(msg.chat.id, text);
-
-    if (row[10]) {
-      const [lat, lon] = row[10].split(',');
-      await bot.sendLocation(msg.chat.id, +lat, +lon);
-    }
-
-  } catch (e) {
-    console.log(e);
+  if (row[10]) {
+    const [lat, lon] = row[10].split(',');
+    bot.sendLocation(msg.chat.id, +lat, +lon);
   }
 });
 
 // =======================
-// 🚀 MAIN ENGINE
+// 🚀 MAIN (MESSAGE + EDIT)
 // =======================
-bot.on('message', async (msg) => {
+bot.on('message', handleMsg);
+bot.on('edited_message', handleMsg);
+
+async function handleMsg(msg) {
   try {
     const chatId = msg.chat.id;
-    const text = msg.text || msg.caption || '';
 
-    // ambil sharelok
     const loc = getLocation(msg);
     if (loc) lastLocation[chatId] = loc;
 
-    // buffer anti miss
     addBuffer(chatId, msg);
     await delay(1000);
 
@@ -293,15 +273,20 @@ bot.on('message', async (msg) => {
 
     for (let b of blocks) {
       const data = parseMCU(b);
+
+      const adaIsi = Object.values(data).some(v => v);
+      if (!adaIsi) continue;
       if (!data.inet) continue;
 
       const shareloc = lastLocation[chatId] || '';
 
-      // ===== REMINDER MULTI FIELD =====
+      // 🔥 REMINDER DINAMIS
       const fields = {
         CP: data.cp,
         ODP: data.odp,
-        PETUGAS: data.petugas
+        PETUGAS: data.petugas,
+        "NO TIKET": data.tiket,
+        ALAMAT: data.alamat
       };
 
       const kosong = Object.keys(fields).filter(k => !fields[k]);
@@ -314,7 +299,7 @@ bot.on('message', async (msg) => {
 
         await bot.sendMessage(
           chatId,
-          `⚠️ ${user} data belum lengkap (${kosong.join(', ')})`
+          `⚠️ ${user} data belum lengkap (${kosong.join(', ')}) silahkan dilengkapi.`
         );
       }
 
@@ -337,6 +322,6 @@ bot.on('message', async (msg) => {
   } catch (err) {
     console.log(err);
   }
-});
+}
 
 console.log('🚀 BOT FINAL ALL-IN-ONE WEBHOOK STABIL SIAP');
