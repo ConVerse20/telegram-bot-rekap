@@ -9,6 +9,11 @@ const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 8080;
 const URL = 'https://telegram-bot-rekap-production.up.railway.app';
 
+if (!TOKEN) throw new Error('BOT_TOKEN kosong');
+if (!SHEET_ID) throw new Error('SPREADSHEET_ID kosong');
+if (!process.env.GOOGLE_CREDS_BASE64) throw new Error('GOOGLE_CREDS_BASE64 kosong');
+
+// ===== INIT =====
 const bot = new TelegramBot(TOKEN, { webHook: true });
 const app = express();
 app.use(express.json());
@@ -35,13 +40,13 @@ app.post('/webhook', (req, res) => {
 app.listen(PORT, async () => {
   await bot.deleteWebHook();
   await bot.setWebHook(`${URL}/webhook`);
-  console.log('🚀 BOT READY');
+  console.log('🚀 BOT SIAP');
 });
 
 // ===== WIB =====
 const now = () => moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
 
-// ===== MEMORY SHARELOC =====
+// ===== MEMORY =====
 let lastTicketByUser = {};
 let lastRowByTicket = {};
 
@@ -72,16 +77,11 @@ function parse(text) {
   };
 }
 
-// ===== VALIDASI FILTER =====
+// ===== FILTER =====
 function isValid(data, text) {
   if (!data.tiket) return false;
-
-  // ❌ skip template kosong
-  if (text.includes('contoh')) return false;
-
-  // ❌ skip kalau semua kosong
+  if (text.toLowerCase().includes('contoh')) return false;
   if (!data.inet && !data.cp && !data.penyebab) return false;
-
   return true;
 }
 
@@ -154,76 +154,87 @@ async function cekData(inet) {
   const rows = res.data.values || [];
 
   for (let i = 1; i < rows.length; i++) {
-    if ((rows[i][3] || '') === inet) {
-      return rows[i];
-    }
+    if ((rows[i][3] || '') === inet) return rows[i];
   }
+
   return null;
 }
 
-// ===== COMMAND CEK =====
+// ===== COMMAND /CEK =====
 bot.onText(/\/cek (.+)/, async (msg, match) => {
-  if (msg.chat.type !== 'private') {
-    return bot.sendMessage(msg.chat.id, '❌ Gunakan di japri bot');
-  }
+  try {
+    if (msg.chat.type !== 'private') {
+      return bot.sendMessage(msg.chat.id, '❌ Gunakan di japri bot');
+    }
 
-  const data = await cekData(match[1]);
+    const inet = match[1].trim();
+    const data = await cekData(inet);
 
-  if (!data) return bot.sendMessage(msg.chat.id, '❌ Tidak ditemukan');
+    if (!data) return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
 
-  const text = `
+    const text = `
 📡 DATA PELANGGAN
 
-🌐 Internet : ${data[3]}
-📞 CP       : ${data[4]}
-📍 Alamat   : ${data[7]}
+🌐 Internet : ${data[3] || '-'}
+📞 CP       : ${data[4] || '-'}
+📍 Alamat   : ${data[7] || '-'}
 📌 Lokasi   : ${data[10] || '-'}
 `;
 
-  await bot.sendMessage(msg.chat.id, text);
+    await bot.sendMessage(msg.chat.id, text);
 
-  if (data[10]) {
-    const [lat, lon] = data[10].split(',');
-    await bot.sendLocation(msg.chat.id, lat, lon);
+    if (data[10]) {
+      const [lat, lon] = data[10].split(',');
+      await bot.sendLocation(msg.chat.id, parseFloat(lat), parseFloat(lon));
+    }
+
+  } catch (e) {
+    console.error(e);
+    bot.sendMessage(msg.chat.id, '❌ Error cek data');
   }
 });
 
-// ===== HANDLE TEXT =====
+// ===== HANDLE MESSAGE =====
 bot.on('message', async (msg) => {
   try {
 
-    // SHARELOC HANDLER
+    // SHARELOC
     if (msg.location) {
-      const user = msg.from.id;
-      const tiket = lastTicketByUser[user];
-
+      const tiket = lastTicketByUser[msg.from.id];
       if (!tiket) return;
 
       const row = lastRowByTicket[tiket];
       if (!row) return;
 
       const loc = `${msg.location.latitude},${msg.location.longitude}`;
-
       await updateLocation(row, loc);
 
       return bot.sendMessage(msg.chat.id, '📍 Sharelok tersimpan');
     }
 
     if (!msg.text) return;
-    if (!msg.text.includes('NO TIKET')) return;
+
+    // skip command
+    if (msg.text.startsWith('/')) return;
+
+    if (!msg.text.toUpperCase().includes('NO TIKET')) return;
 
     const data = parse(msg.text);
 
-    // FILTER DATA JELEK
     if (!isValid(data, msg.text)) return;
 
     const result = await save(data);
 
-    // SIMPAN MEMORY
+    // memory
     lastTicketByUser[msg.from.id] = data.tiket;
     lastRowByTicket[data.tiket] = result.row;
 
-    bot.sendMessage(msg.chat.id, '✅ Masuk sheet');
+    // ===== NOTIF BARU =====
+    bot.sendMessage(msg.chat.id,
+      result.type === 'update'
+        ? `🔄 Data ${data.tiket} berhasil di-update ke Google Sheet ✅`
+        : `🆕 Data ${data.tiket} sudah Dicatet ke Google Sheet ✅`
+    );
 
   } catch (e) {
     console.error(e);
