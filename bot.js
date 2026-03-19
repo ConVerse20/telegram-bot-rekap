@@ -150,8 +150,6 @@ bot.onText(/\/start/, (msg) => {
 // ===== HANDLE MESSAGE (GRUP ONLY) =====
 bot.on('message', async (msg) => {
   try {
-    // ❌ Abaikan chat pribadi
-    if (msg.chat.type === 'private') return;
 
     // ❌ Abaikan non-text
     if (!msg.text) return;
