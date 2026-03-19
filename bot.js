@@ -185,7 +185,72 @@ async function saveToSheet(data, location = '') {
   return 'insert';
 }
 
-// ===== HANDLE TEXT =====
+// ===== FORMAT OUTPUT =====
+function formatDataOutput(data) {
+  return `📡 *DATA PELANGGAN*
+
+🌐 Internet : ${data.inet || '-'}
+📞 CP       : ${data.cp || '-'}
+📍 Alamat   : ${data.alamat || '-'}
+📌 Lokasi   : ${data.lokasi || '-'}`;
+}
+
+// ===== CARI DATA =====
+async function cariDataByInet(inet) {
+  const client = await auth.getClient();
+  const sheets = google.sheets({ version: 'v4', auth: client });
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range: 'DATA!A:K',
+  });
+
+  const rows = res.data.values || [];
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+
+    if ((row[3] || '').trim() === inet.trim()) {
+      return {
+        inet: row[3],
+        cp: row[4],
+        alamat: row[7],
+        lokasi: row[10],
+      };
+    }
+  }
+
+  return null;
+}
+
+// ===== COMMAND CEK (PRIVATE ONLY) =====
+bot.onText(/\/cek (.+)/, async (msg, match) => {
+  if (msg.chat.type !== 'private') {
+    return bot.sendMessage(msg.chat.id, '⚠️ Gunakan di japri bot ya 🙏');
+  }
+
+  const inet = match[1].trim();
+  const data = await cariDataByInet(inet);
+
+  if (!data) {
+    return bot.sendMessage(msg.chat.id, '❌ Data tidak ditemukan');
+  }
+
+  await bot.sendMessage(msg.chat.id, formatDataOutput(data), {
+    parse_mode: 'Markdown'
+  });
+
+  if (data.lokasi) {
+    const [lat, lon] = data.lokasi.split(',');
+
+    await bot.sendLocation(msg.chat.id, parseFloat(lat), parseFloat(lon));
+
+    const maps = `https://maps.google.com/?q=${data.lokasi}`;
+    await bot.sendMessage(msg.chat.id, `🗺️ Maps:\n${maps}`);
+  }
+});
+
+// ===== HANDLE MESSAGE =====
 bot.on('message', async (msg) => {
   try {
     if (!msg.text) return;
