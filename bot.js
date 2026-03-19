@@ -9,21 +9,11 @@ const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 8080;
 const URL = 'https://telegram-bot-rekap-production.up.railway.app';
 
-// 👉 OPTIONAL: batasi hanya 1 grup
 // const ALLOWED_GROUP = -1002498803166;
 
-if (!TOKEN) {
-  console.error('❌ BOT_TOKEN kosong');
-  process.exit(1);
-}
-if (!SHEET_ID) {
-  console.error('❌ SPREADSHEET_ID kosong');
-  process.exit(1);
-}
-if (!process.env.GOOGLE_CREDS_BASE64) {
-  console.error('❌ GOOGLE_CREDS_BASE64 kosong');
-  process.exit(1);
-}
+if (!TOKEN) throw new Error('❌ BOT_TOKEN kosong');
+if (!SHEET_ID) throw new Error('❌ SPREADSHEET_ID kosong');
+if (!process.env.GOOGLE_CREDS_BASE64) throw new Error('❌ GOOGLE_CREDS_BASE64 kosong');
 
 // ===== INIT =====
 const bot = new TelegramBot(TOKEN, { webHook: true });
@@ -39,7 +29,7 @@ const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
 );
 
-// 🔥 FIX JWT
+// 🔥 FIX PRIVATE KEY
 creds.private_key = creds.private_key.replace(/\\n/g, '\n');
 
 console.log('🔑 SERVICE ACCOUNT:', creds.client_email);
@@ -64,52 +54,65 @@ app.listen(PORT, async () => {
   console.log('🚀 BOT SIAP FULL');
   console.log('🌐 Server hidup di port', PORT);
 
-  const webhookUrl = `${URL}/webhook`;
-
   try {
     await bot.deleteWebHook();
-    await bot.setWebHook(webhookUrl);
+    await bot.setWebHook(`${URL}/webhook`);
     console.log('✅ Webhook aktif');
   } catch (err) {
     console.error('❌ Gagal set webhook:', err);
   }
 });
 
-// ===== PARSER =====
+// ===== PARSER SUPER STABIL =====
 function parseLaporan(text = '') {
-  const get = (label) => {
-    const regex = new RegExp(`${label}\\s*:\\s*(.*)`, 'i');
-    const match = text.match(regex);
-
-    if (!match) return '';
-
-    let value = match[1].trim();
-
-    // 🔥 kalau kosong / cuma tanda / strip → kosongkan
-    if (!value || value === '-' || value === ':') return '';
-
-    return value;
+  const result = {
+    status: '',
+    tiket: '',
+    inet: '',
+    cp: '',
+    penyebab: '',
+    perbaikan: '',
+    alamat: '',
+    odp: '',
+    petugas: ''
   };
 
-  // ambil data
-  let cp = get('CP PELANGGAN');
+  const lines = text.split('\n');
 
-  // 🔥 FIX +62 biar gak error di sheet
-  if (cp && cp.startsWith('+')) {
-    cp = `'${cp}`;
-  }
+  lines.forEach(line => {
+    let clean = line.trim();
 
-  return {
-    status: get('STATUS'),
-    tiket: get('NO TIKET'),
-    inet: get('INET/TLP'),
-    cp: cp,
-    penyebab: get('PENYEBAB GANGGUAN'),
-    perbaikan: get('LANGKAH PERBAIKAN'),
-    alamat: get('ALAMAT LENGKAP'),
-    odp: get('NAMA ODP'),
-    petugas: get('PETUGAS'),
-  };
+    if (clean.startsWith('-')) {
+      clean = clean.slice(1).trim();
+    }
+
+    const parts = clean.split(':');
+    if (parts.length < 2) return;
+
+    const key = parts[0].toUpperCase().trim();
+    let value = parts.slice(1).join(':').trim();
+
+    // kosongkan jika kosong
+    if (!value || value === '-' || value === ':') value = '';
+
+    if (key.includes('STATUS')) result.status = value.toUpperCase();
+    else if (key.includes('NO TIKET')) result.tiket = value;
+    else if (key.includes('INET')) result.inet = value;
+
+    else if (key.includes('CP')) {
+      // 🔥 FIX +62
+      if (value.startsWith('+')) value = `'${value}`;
+      result.cp = value;
+    }
+
+    else if (key.includes('PENYEBAB')) result.penyebab = value;
+    else if (key.includes('LANGKAH')) result.perbaikan = value;
+    else if (key.includes('ALAMAT')) result.alamat = value;
+    else if (key.includes('ODP')) result.odp = value;
+    else if (key.includes('PETUGAS')) result.petugas = value;
+  });
+
+  return result;
 }
 
 // ===== SAVE TO SHEET =====
@@ -140,30 +143,26 @@ async function saveToSheet(data) {
   console.log('✅ BERHASIL MASUK SHEET');
 }
 
-// ===== COMMAND (OPTIONAL) =====
+// ===== COMMAND =====
 bot.onText(/\/start/, (msg) => {
   if (msg.chat.type === 'private') {
     bot.sendMessage(msg.chat.id, '🤖 Bot aktif di GRUP ya 🔥');
   }
 });
 
-// ===== HANDLE MESSAGE (GRUP ONLY) =====
+// ===== HANDLE MESSAGE (GRUP) =====
 bot.on('message', async (msg) => {
   try {
-
-    // ❌ Abaikan non-text
     if (!msg.text) return;
 
-    // ❌ Optional: batasi grup tertentu
     // if (msg.chat.id !== ALLOWED_GROUP) return;
 
-    // ❌ Filter: harus ada NO TIKET
     if (!msg.text.toUpperCase().includes('NO TIKET')) return;
 
-    console.log('📩 Pesan masuk dari grup:', msg.chat.title);
-    console.log('🆔 Chat ID:', msg.chat.id);
+    console.log('📩 Grup:', msg.chat.title);
 
     const data = parseLaporan(msg.text);
+
     if (!data.tiket) return;
 
     await saveToSheet(data);
