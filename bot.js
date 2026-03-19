@@ -9,6 +9,9 @@ const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 8080;
 const URL = 'https://telegram-bot-rekap-production.up.railway.app';
 
+// 👉 OPTIONAL: batasi hanya 1 grup
+// const ALLOWED_GROUP = -1002498803166;
+
 if (!TOKEN) {
   console.error('❌ BOT_TOKEN kosong');
   process.exit(1);
@@ -27,19 +30,18 @@ const bot = new TelegramBot(TOKEN, { webHook: true });
 const app = express();
 app.use(express.json());
 
-// ===== GLOBAL ERROR =====
+// ===== ERROR HANDLER =====
 process.on('uncaughtException', console.error);
 process.on('unhandledRejection', console.error);
 
-// ===== GOOGLE AUTH (FIX FINAL) =====
+// ===== GOOGLE AUTH =====
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
 );
 
-// 🔥 WAJIB: fix newline private key
+// 🔥 FIX JWT
 creds.private_key = creds.private_key.replace(/\\n/g, '\n');
 
-// 🔍 DEBUG (boleh dihapus nanti)
 console.log('🔑 SERVICE ACCOUNT:', creds.client_email);
 
 const auth = new google.auth.GoogleAuth({
@@ -63,7 +65,6 @@ app.listen(PORT, async () => {
   console.log('🌐 Server hidup di port', PORT);
 
   const webhookUrl = `${URL}/webhook`;
-  console.log('🌐 Set webhook:', webhookUrl);
 
   try {
     await bot.deleteWebHook();
@@ -97,51 +98,62 @@ function parseLaporan(text = '') {
 
 // ===== SAVE TO SHEET =====
 async function saveToSheet(data) {
-  try {
-    const client = await auth.getClient();
-    const sheets = google.sheets({ version: 'v4', auth: client });
+  const client = await auth.getClient();
+  const sheets = google.sheets({ version: 'v4', auth: client });
 
-    const values = [[
-      moment().format('YYYY-MM-DD HH:mm:ss'),
-      data.status,
-      data.tiket,
-      data.inet,
-      data.cp,
-      data.penyebab,
-      data.perbaikan,
-      data.alamat,
-      data.odp,
-      data.petugas
-    ]];
+  const values = [[
+    moment().format('YYYY-MM-DD HH:mm:ss'),
+    data.status,
+    data.tiket,
+    data.inet,
+    data.cp,
+    data.penyebab,
+    data.perbaikan,
+    data.alamat,
+    data.odp,
+    data.petugas
+  ]];
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID,
-      range: 'DATA!A:J',
-      valueInputOption: 'USER_ENTERED',
-      resource: { values }
-    });
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SHEET_ID,
+    range: 'DATA!A:J',
+    valueInputOption: 'USER_ENTERED',
+    resource: { values }
+  });
 
-    console.log('✅ BERHASIL MASUK SHEET');
-  } catch (err) {
-    console.error('❌ GOOGLE ERROR:', err.response?.data || err.message);
-    throw err;
-  }
+  console.log('✅ BERHASIL MASUK SHEET');
 }
 
-// ===== COMMAND =====
+// ===== COMMAND (OPTIONAL) =====
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, '🤖 BOT AKTIF 🔥');
+  if (msg.chat.type === 'private') {
+    bot.sendMessage(msg.chat.id, '🤖 Bot aktif di GRUP ya 🔥');
+  }
 });
 
-// ===== HANDLE MESSAGE =====
+// ===== HANDLE MESSAGE (GRUP ONLY) =====
 bot.on('message', async (msg) => {
   try {
+    // ❌ Abaikan chat pribadi
+    if (msg.chat.type === 'private') return;
+
+    // ❌ Abaikan non-text
     if (!msg.text) return;
+
+    // ❌ Optional: batasi grup tertentu
+    // if (msg.chat.id !== ALLOWED_GROUP) return;
+
+    // ❌ Filter: harus ada NO TIKET
+    if (!msg.text.toUpperCase().includes('NO TIKET')) return;
+
+    console.log('📩 Pesan masuk dari grup:', msg.chat.title);
+    console.log('🆔 Chat ID:', msg.chat.id);
 
     const data = parseLaporan(msg.text);
     if (!data.tiket) return;
 
     await saveToSheet(data);
+
     bot.sendMessage(msg.chat.id, '✅ Data masuk Google Sheet');
 
   } catch (err) {
