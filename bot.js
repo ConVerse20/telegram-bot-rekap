@@ -3,22 +3,20 @@ const moment = require('moment');
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 
-// ================= CONFIG =================
+// ===== CONFIG =====
 const TOKEN = process.env.BOT_TOKEN;
 const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 8080;
 const URL = process.env.WEBHOOK_URL;
 
-// ================= INIT =================
-const useWebhook = !!URL;
-const bot = new TelegramBot(TOKEN, useWebhook ? { webHook: true } : { polling: true });
-
+// ===== INIT =====
+const bot = new TelegramBot(TOKEN, URL ? { webHook: true } : { polling: true });
 const app = express();
 app.use(express.json());
 
 const lastLocation = {};
 
-// ================= GOOGLE AUTH =================
+// ===== GOOGLE =====
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
 );
@@ -29,39 +27,36 @@ const auth = new google.auth.GoogleAuth({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-// ================= WEBHOOK SAFE =================
-if (useWebhook) {
+// ===== WEBHOOK =====
+if (URL) {
   app.post('/webhook', (req, res) => {
     res.sendStatus(200);
     bot.processUpdate(req.body);
   });
 
   app.listen(PORT, async () => {
-    console.log('🚀 WEBHOOK MODE');
-
-    try {
-      await bot.deleteWebHook();
-      await bot.setWebHook(`${URL}/webhook`);
-      console.log('✅ Webhook aktif');
-    } catch (e) {
-      console.log('❌ Webhook error:', e.message);
-    }
+    await bot.deleteWebHook();
+    await bot.setWebHook(`${URL}/webhook`);
+    console.log('🚀 Webhook aktif');
   });
-
 } else {
-  console.log('🚀 POLLING MODE');
+  console.log('🚀 Polling aktif');
 }
 
-// ================= UTIL =================
+// ===== UTIL =====
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
-// ================= CP NORMALIZER =================
+// ===== CLEAN FIELD =====
+function clean(val) {
+  if (!val) return '';
+  return val.replace(/:/g, '').trim();
+}
+
+// ===== CP NORMALIZER =====
 function normalizeCP(cp) {
   if (!cp) return '';
-
   cp = cp.replace(/\s+/g, '');
 
-  // multiple nomor
   let list = cp.split('/').map(x => x.trim());
 
   list = list.map(num => {
@@ -74,7 +69,7 @@ function normalizeCP(cp) {
   return list.join(' / ');
 }
 
-// ================= PARSER =================
+// ===== PARSER =====
 function extractMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
   parts.shift();
@@ -85,9 +80,7 @@ function getField(block, label) {
   const regex = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
   const match = block.match(regex);
   if (!match) return '';
-  let val = match[1].replace(/:/g, '').trim();
-  if (!val || val === '-') return '';
-  return val;
+  return clean(match[1]);
 }
 
 function parseMCU(block) {
@@ -104,26 +97,19 @@ function parseMCU(block) {
   };
 }
 
-// ================= SHARELOK =================
+// ===== SHARELOK =====
 function extractLocation(msg) {
   if (msg.location)
     return `${msg.location.latitude},${msg.location.longitude}`;
 
-  if (msg.venue?.location)
-    return `${msg.venue.location.latitude},${msg.venue.location.longitude}`;
-
   const text = msg.text || msg.caption || '';
-
-  let m = text.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
-  if (m) return `${m[1]},${m[2]}`;
-
-  m = text.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  const m = text.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
   if (m) return `${m[1]},${m[2]}`;
 
   return '';
 }
 
-// ================= SAVE / UPDATE =================
+// ===== SAVE =====
 async function saveOrUpdate(data, shareloc) {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
@@ -136,12 +122,28 @@ async function saveOrUpdate(data, shareloc) {
   const rows = res.data.values || [];
   let idx = rows.findIndex(r => r[3] === data.inet);
 
+  const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
+
+  const newRow = [
+    now,
+    data.status || '',
+    data.tiket || '',
+    data.inet || '',
+    data.cp || '',
+    data.penyebab || '',
+    data.perbaikan || '',
+    data.alamat || '',
+    data.odp || '',
+    data.petugas || '',
+    shareloc || ''
+  ];
+
   let shareChanged = false;
 
   if (idx !== -1) {
     let row = rows[idx];
+    while (row.length < 11) row.push('');
 
-    // CP append (tidak overwrite)
     if (data.cp) {
       let cpList = row[4] ? row[4].split(' / ') : [];
       if (!cpList.includes(data.cp)) cpList.push(data.cp);
@@ -175,65 +177,13 @@ async function saveOrUpdate(data, shareloc) {
     spreadsheetId: SHEET_ID,
     range: 'DATA!A:K',
     valueInputOption: 'USER_ENTERED',
-    resource: {
-      values: [[
-        moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss'),
-        data.status,
-        data.tiket,
-        data.inet,
-        data.cp,
-        data.penyebab,
-        data.perbaikan,
-        data.alamat,
-        data.odp,
-        data.petugas,
-        shareloc
-      ]]
-    }
+    resource: { values: [newRow] }
   });
 
   return { type: 'insert', shareChanged: !!shareloc };
 }
 
-// ================= /CEK FINAL =================
-bot.onText(/\/cek (.+)/, async (msg, match) => {
-  try {
-    const inet = match[1].trim();
-    const chatId = msg.chat.id;
-
-    const client = await auth.getClient();
-    const sheets = google.sheets({ version: 'v4', auth: client });
-
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: 'DATA!A:K',
-    });
-
-    const rows = res.data.values || [];
-    const row = rows.find(r => r[3] === inet);
-
-    if (!row) {
-      return bot.sendMessage(chatId, `❌ Data tidak ditemukan (${inet})`);
-    }
-
-    const text =
-`📡 INTERNET : ${row[3]}
-📞 CP : ${row[4] || '-'}
-📍 ALAMAT : ${row[7] || '-'}`;
-
-    await bot.sendMessage(chatId, text);
-
-    if (row[10]) {
-      const [lat, lng] = row[10].split(',');
-      await bot.sendLocation(chatId, +lat, +lng);
-    }
-
-  } catch (err) {
-    console.log(err);
-  }
-});
-
-// ================= MAIN =================
+// ===== MAIN =====
 bot.on('message', async (msg) => {
   try {
     const text = msg.text || msg.caption || '';
@@ -243,7 +193,7 @@ bot.on('message', async (msg) => {
 
     if (!/MEDICAL/i.test(text)) return;
 
-    await delay(1500);
+    await delay(1000);
 
     const blocks = extractMCU(text);
     const shareloc = lastLocation['last'] || '';
@@ -252,23 +202,36 @@ bot.on('message', async (msg) => {
       const data = parseMCU(b);
       if (!data.inet) continue;
 
+      // ===== REMINDER FIX =====
+      let kosong = [];
+      if (!data.odp) kosong.push('ODP');
+      if (!data.petugas) kosong.push('PETUGAS');
+
+      if (kosong.length) {
+        const user = msg.from.username
+          ? '@' + msg.from.username
+          : msg.from.first_name;
+
+        await bot.sendMessage(
+          msg.chat.id,
+          `⚠️ ${user} data belum lengkap (${kosong.join(', ')})`
+        );
+      }
+
       const res = await saveOrUpdate(data, shareloc);
 
       if (res.type === 'insert') {
-        await bot.sendMessage(msg.chat.id,
-          `🆕 Data Baru sudah Dicatet ke Google Sheet ✅`);
+        await bot.sendMessage(msg.chat.id, `🆕 Data Baru masuk Google Sheet ✅`);
       } else {
-        await bot.sendMessage(msg.chat.id,
-          `🔄 Data berhasil di-update ke Google Sheet ✅`);
+        await bot.sendMessage(msg.chat.id, `🔄 Data di-update Google Sheet ✅`);
       }
 
       if (res.shareChanged) {
-        await bot.sendMessage(msg.chat.id,
-          `📍 Sharelok berhasil di-update ke Google Sheet ✅`);
+        await bot.sendMessage(msg.chat.id, `📍 Sharelok tersimpan ✅`);
       }
     }
 
   } catch (err) {
-    console.log('ERROR:', err);
+    console.log(err);
   }
 });
