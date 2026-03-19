@@ -80,14 +80,30 @@ function parseLaporan(text = '') {
   const get = (label) => {
     const regex = new RegExp(`${label}\\s*:\\s*(.*)`, 'i');
     const match = text.match(regex);
-    return match ? match[1].trim() : '';
+
+    if (!match) return '';
+
+    let value = match[1].trim();
+
+    // 🔥 kalau kosong / cuma tanda / strip → kosongkan
+    if (!value || value === '-' || value === ':') return '';
+
+    return value;
   };
+
+  // ambil data
+  let cp = get('CP PELANGGAN');
+
+  // 🔥 FIX +62 biar gak error di sheet
+  if (cp && cp.startsWith('+')) {
+    cp = `'${cp}`;
+  }
 
   return {
     status: get('STATUS'),
     tiket: get('NO TIKET'),
     inet: get('INET/TLP'),
-    cp: get('CP PELANGGAN'),
+    cp: cp,
     penyebab: get('PENYEBAB GANGGUAN'),
     perbaikan: get('LANGKAH PERBAIKAN'),
     alamat: get('ALAMAT LENGKAP'),
