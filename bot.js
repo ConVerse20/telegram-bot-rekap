@@ -119,26 +119,33 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 🧠 VALIDASI FIELD KOSONG (NEW)
+// 🧠 VALIDASI FIELD KOSONG (FIX FINAL)
 // =======================
 function getEmptyFields(data) {
-  const kosong = [];
+  const fields = {
+    INET: data.inet,
+    CP: data.cp,
+    ALAMAT: data.alamat,
+    'NAMA ODP': data.odp,
+  };
 
-  if (!data.inet) kosong.push('INET');
-  if (!data.cp) kosong.push('CP');
-  if (!data.alamat) kosong.push('ALAMAT');
-  if (!data.odp) kosong.push('NAMA ODP');
+  const kosong = Object.entries(fields)
+    .filter(([_, v]) => !v || v.toString().trim() === '')
+    .map(([k]) => k);
+
+  // 🚫 semua kosong → tidak reminder
+  if (kosong.length === Object.keys(fields).length) {
+    return [];
+  }
 
   return kosong;
 }
 
 // =======================
-// 🧠 USER TAG (NEW)
+// 🧠 USER TAG
 // =======================
 function getUserTag(msg) {
-  if (msg.from.username) {
-    return `@${msg.from.username}`;
-  }
+  if (msg.from.username) return `@${msg.from.username}`;
   return msg.from.first_name || 'User';
 }
 
@@ -293,7 +300,7 @@ async function handleMsg(msg) {
     // =======================
     // 🚨 REMINDER FIELD KOSONG
     // =======================
-    if (emptyFields.length > 0) {
+    if (emptyFields.length > 0 && !msg.edit_date) {
       await bot.sendMessage(
         chatId,
         `⚠️ DATA BELUM LENGKAP
@@ -362,4 +369,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL STABLE + VALIDATION REMINDER');
+console.log('🚀 FINAL STABLE + PERFECT VALIDATION');
