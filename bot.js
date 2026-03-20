@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL (LOCK - NO CHANGE FLOW)
+// 🚀 MCU BOT FINAL (LOCK - FIX PARSER + REMINDER)
 // =======================
 
 const { google } = require('googleapis');
@@ -38,14 +38,13 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 function clean(v) {
   if (!v) return '';
   v = v.trim();
-  if (/^(STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS)/i.test(v))
-    return '';
   if (v === '-' || v === ':' || v === '') return '';
+  if (/contoh/i.test(v)) return '';
   return v;
 }
 
 // =======================
-// 📱 CP NORMAL (ASLI)
+// 📱 CP
 // =======================
 function normalizeCP(cp) {
   if (!cp) return '';
@@ -95,13 +94,21 @@ function addBuffer(chatId, msg) {
 }
 
 // =======================
-// 🧠 PARSER
+// 🧠 PARSER (FIX)
 // =======================
 function get(label, txt) {
-  const r = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
-  const m = txt.match(r);
-  if (!m) return '';
-  return m[1].trim();
+  const regex = new RegExp(
+    `${label}\\s*:\\s*([\\s\\S]*?)(?=\\n\\s*-?\\s*(STATUS|NO TIKET|INET|CP PELANGGAN|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS)\\s*:|$)`,
+    'i'
+  );
+
+  const match = txt.match(regex);
+  if (!match) return '';
+
+  let val = match[1].trim();
+  if (/contoh/i.test(val)) return '';
+
+  return val;
 }
 
 function parseMCU(txt) {
@@ -160,33 +167,13 @@ async function saveData(data, loc) {
   ];
 
   if (idx !== -1) {
-    let old = rows[idx];
-    while (old.length < 11) old.push('');
-
-    let shareChanged = false;
-
-    old[1] = data.status || old[1];
-    old[2] = data.tiket || old[2];
-    old[4] = data.cp || old[4];
-    old[5] = data.penyebab || old[5];
-    old[6] = data.perbaikan || old[6];
-    old[7] = data.alamat || old[7];
-    old[8] = data.odp || old[8];
-    old[9] = data.petugas || old[9];
-
-    if (loc && loc !== old[10]) {
-      old[10] = loc;
-      shareChanged = true;
-    }
-
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
       range: `DATA!A${idx + 1}:K${idx + 1}`,
       valueInputOption: 'RAW',
-      resource: { values: [old] }
+      resource: { values: [row] }
     });
-
-    return { type: 'update', shareChanged };
+    return { type: 'update' };
   }
 
   await sheets.spreadsheets.values.append({
@@ -196,7 +183,7 @@ async function saveData(data, loc) {
     resource: { values: [row] }
   });
 
-  return { type: 'insert', shareChanged: !!loc };
+  return { type: 'insert' };
 }
 
 // =======================
@@ -211,7 +198,7 @@ async function handleMsg(msg) {
 
     const chatId = msg.chat.id;
 
-    // 🔥 AUTO SAVE SHARELOK (FIX JEDA CHAT)
+    // ===== SHARELOK TERPISAH =====
     const locNow = getLocation(msg);
     if (locNow && lastInet[chatId]) {
       await saveData({ inet: lastInet[chatId] }, locNow);
@@ -237,8 +224,27 @@ async function handleMsg(msg) {
 
     lastInet[chatId] = data.inet;
 
-    const shareloc = lastLocation[chatId] || '';
+    // =======================
+    // 🔔 REMINDER FIELD KOSONG (BALIK SEPERTI AWAL)
+    // =======================
+    const fields = {
+      "INET": data.inet,
+      "CP": data.cp,
+      "ALAMAT": data.alamat,
+      "ODP": data.odp
+    };
 
+    const kosong = Object.keys(fields).filter(k => !fields[k]);
+
+    if (kosong.length) {
+      const user = msg.from.username ? '@' + msg.from.username : msg.from.first_name;
+      await bot.sendMessage(
+        chatId,
+        `⚠️ ${user} data belum lengkap (${kosong.join(', ')}) silahkan dilengkapi.`
+      );
+    }
+
+    const shareloc = lastLocation[chatId] || '';
     const res = await saveData(data, shareloc);
 
     if (res.type === 'insert') {
@@ -247,17 +253,13 @@ async function handleMsg(msg) {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
     }
 
-    if (res.shareChanged) {
-      await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
-    }
-
   } catch (err) {
     console.log(err);
   }
 }
 
 // =======================
-// 🔎 /CEK FINAL
+// 🔎 /CEK
 // =======================
 bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   try {
@@ -302,4 +304,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL STABLE (NO CHANGE FLOW)');
+console.log('🚀 FINAL STABLE - PARSER + REMINDER OK');
