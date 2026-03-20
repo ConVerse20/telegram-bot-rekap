@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL (PATCH MINIMAL - TIDAK UBAH FITUR)
+// 🚀 MCU BOT FINAL (LOCK + TAMBAHAN /CEK & SHARELOK)
 // =======================
 
 const { google } = require('googleapis');
@@ -31,16 +31,14 @@ app.listen(PORT, async () => {
 });
 
 // =======================
-// 🧠 UTIL (PATCH)
+// 🧠 UTIL
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 function clean(v) {
   if (!v) return '';
-
   v = v.trim();
 
-  // ❗ FIX: buang label nyangkut
   if (/^(STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS)/i.test(v))
     return '';
 
@@ -65,7 +63,7 @@ function normalizeCP(cp) {
 }
 
 // =======================
-// 📍 SHARELOK (ASLI)
+// 📍 SHARELOK
 // =======================
 function getLocation(msg) {
   if (msg.location)
@@ -75,7 +73,6 @@ function getLocation(msg) {
     return `${msg.reply_to_message.location.latitude},${msg.reply_to_message.location.longitude}`;
 
   const text = msg.text || msg.caption || '';
-
   let m = text.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
   if (m) return `${m[1]},${m[2]}`;
 
@@ -83,7 +80,7 @@ function getLocation(msg) {
 }
 
 // =======================
-// 📦 BUFFER (ASLI)
+// 📦 BUFFER
 // =======================
 const bufferMsg = {};
 const lastLocation = {};
@@ -94,7 +91,7 @@ function addBuffer(chatId, msg) {
 }
 
 // =======================
-// 🧠 PARSER (FIX UTAMA)
+// 🧠 PARSER
 // =======================
 function get(label, txt) {
   const r = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
@@ -102,8 +99,6 @@ function get(label, txt) {
   if (!m) return '';
 
   let val = m[1];
-
-  // ❗ STOP kalau kena label berikutnya
   val = val.split(/STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS/i)[0];
 
   return val.trim();
@@ -124,7 +119,7 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 💾 GOOGLE SHEET (ASLI - LOCK)
+// 💾 GOOGLE SHEET
 // =======================
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
@@ -168,6 +163,8 @@ async function saveData(data, loc) {
     let old = rows[idx];
     while (old.length < 11) old.push('');
 
+    let shareChanged = false;
+
     old[1] = data.status || old[1];
     old[2] = data.tiket || old[2];
     old[4] = data.cp || old[4];
@@ -177,7 +174,10 @@ async function saveData(data, loc) {
     old[8] = data.odp || old[8];
     old[9] = data.petugas || old[9];
 
-    if (loc) old[10] = loc;
+    if (loc && loc !== old[10]) {
+      old[10] = loc;
+      shareChanged = true;
+    }
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
@@ -186,7 +186,7 @@ async function saveData(data, loc) {
       resource: { values: [old] }
     });
 
-    return { type: 'update' };
+    return { type: 'update', shareChanged };
   }
 
   await sheets.spreadsheets.values.append({
@@ -196,11 +196,11 @@ async function saveData(data, loc) {
     resource: { values: [row] }
   });
 
-  return { type: 'insert' };
+  return { type: 'insert', shareChanged: !!loc };
 }
 
 // =======================
-// 🚀 MAIN (FIX REMINDER)
+// 🚀 MAIN
 // =======================
 bot.on('message', handleMsg);
 bot.on('edited_message', handleMsg);
@@ -224,12 +224,10 @@ async function handleMsg(msg) {
     if (!/MEDICAL/i.test(combined)) return;
 
     const data = parseMCU(combined);
-
     if (!data.inet) return;
 
     const shareloc = lastLocation[chatId] || '';
 
-    // 🔥 FIX REMINDER FINAL
     const kosong = [];
     if (!data.inet) kosong.push("INET");
     if (!data.cp) kosong.push("CP");
@@ -257,9 +255,65 @@ async function handleMsg(msg) {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
     }
 
+    if (res.shareChanged) {
+      await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+    }
+
   } catch (err) {
     console.log(err);
   }
 }
 
-console.log('🚀 PATCH FINAL TANPA UBAH FITUR');
+// =======================
+// 🔎 /CEK (DITAMBAHKAN)
+// =======================
+bot.onText(/\/cek (.+)/, async (msg, match) => {
+  try {
+    const chatId = msg.chat.id;
+    const inet = match[1].trim();
+
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: 'v4', auth: client });
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'DATA!A:K',
+    });
+
+    const rows = res.data.values || [];
+    const row = rows.find(r => r[3] === inet);
+
+    if (!row) {
+      return bot.sendMessage(chatId, '❌ Data tidak ditemukan');
+    }
+
+    const text = `
+📡 DATA
+
+INET: ${row[3] || '-'}
+STATUS: ${row[1] || '-'}
+NO TIKET: ${row[2] || '-'}
+CP: ${row[4] || '-'}
+PENYEBAB: ${row[5] || '-'}
+PERBAIKAN: ${row[6] || '-'}
+ALAMAT: ${row[7] || '-'}
+ODP: ${row[8] || '-'}
+PETUGAS: ${row[9] || '-'}
+SHARELOK: ${row[10] || '-'}
+`;
+
+    await bot.sendMessage(chatId, text);
+
+    if (row[10]) {
+      const [lat, lon] = row[10].split(',');
+      if (lat && lon) {
+        await bot.sendLocation(chatId, parseFloat(lat), parseFloat(lon));
+      }
+    }
+
+  } catch (err) {
+    console.log(err);
+  }
+});
+
+console.log('🚀 FINAL LOCK + /CEK + SHARELOK');
