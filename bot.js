@@ -286,33 +286,28 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
       return bot.sendMessage(chatId, '❌ Data tidak ditemukan');
     }
 
-    const text = `
-📡 DATA
+    const latlon = row[10] || '';
 
-INET: ${row[3] || '-'}
-STATUS: ${row[1] || '-'}
-NO TIKET: ${row[2] || '-'}
-CP: ${row[4] || '-'}
-PENYEBAB: ${row[5] || '-'}
-PERBAIKAN: ${row[6] || '-'}
-ALAMAT: ${row[7] || '-'}
-ODP: ${row[8] || '-'}
-PETUGAS: ${row[9] || '-'}
-SHARELOK: ${row[10] || '-'}
-`;
-
-    await bot.sendMessage(chatId, text);
-
-    if (row[10]) {
-      const [lat, lon] = row[10].split(',');
+    // ✅ KIRIM MAP DULU (kalau ada)
+    if (latlon) {
+      const [lat, lon] = latlon.split(',');
       if (lat && lon) {
         await bot.sendLocation(chatId, parseFloat(lat), parseFloat(lon));
       }
     }
 
+    // ✅ FORMAT SIMPLE (SEPERTI SS KANAN)
+    const text = `
+📡 INTERNET : ${row[3] || '-'}
+📞 CP : ${row[4] || '-'}
+📍 ALAMAT : ${row[7] || '-'}
+📡 ODP : ${row[8] || '-'}
+`;
+
+    await bot.sendMessage(chatId, text.trim());
+
   } catch (err) {
     console.log(err);
   }
 });
-
 console.log('🚀 FINAL LOCK TANPA MERUBAH FITUR');
