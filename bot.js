@@ -38,14 +38,9 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 function clean(v) {
   if (!v) return '';
   v = v.trim();
-
-  if (
-    v === '-' ||
-    v === ':' ||
-    v === '' ||
-    /STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|ODP|PETUGAS/i.test(v)
-  ) return '';
-
+  if (/^(STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS)/i.test(v))
+    return '';
+  if (v === '-' || v === ':' || v === '') return '';
   return v;
 }
 
@@ -100,26 +95,13 @@ function addBuffer(chatId, msg) {
 }
 
 // =======================
-// 🧠 PARSER (FIX FINAL)
+// 🧠 PARSER
 // =======================
 function get(label, txt) {
-  const lines = txt.split('\n');
-
-  for (let line of lines) {
-    if (line.toUpperCase().includes(label)) {
-      let val = line.split(':').slice(1).join(':').trim();
-
-      if (!val || val === '-' || val === ':') return '';
-
-      if (/STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|ODP|PETUGAS/i.test(val)) {
-        return '';
-      }
-
-      return val;
-    }
-  }
-
-  return '';
+  const r = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
+  const m = txt.match(r);
+  if (!m) return '';
+  return m[1].trim();
 }
 
 function parseMCU(txt) {
@@ -178,13 +160,33 @@ async function saveData(data, loc) {
   ];
 
   if (idx !== -1) {
+    let old = rows[idx];
+    while (old.length < 11) old.push('');
+
+    let shareChanged = false;
+
+    old[1] = data.status || old[1];
+    old[2] = data.tiket || old[2];
+    old[4] = data.cp || old[4];
+    old[5] = data.penyebab || old[5];
+    old[6] = data.perbaikan || old[6];
+    old[7] = data.alamat || old[7];
+    old[8] = data.odp || old[8];
+    old[9] = data.petugas || old[9];
+
+    if (loc && loc !== old[10]) {
+      old[10] = loc;
+      shareChanged = true;
+    }
+
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
       range: `DATA!A${idx + 1}:K${idx + 1}`,
       valueInputOption: 'RAW',
-      resource: { values: [row] }
+      resource: { values: [old] }
     });
-    return { type: 'update' };
+
+    return { type: 'update', shareChanged };
   }
 
   await sheets.spreadsheets.values.append({
@@ -194,7 +196,7 @@ async function saveData(data, loc) {
     resource: { values: [row] }
   });
 
-  return { type: 'insert' };
+  return { type: 'insert', shareChanged: !!loc };
 }
 
 // =======================
@@ -209,7 +211,7 @@ async function handleMsg(msg) {
 
     const chatId = msg.chat.id;
 
-    // SHARELOK TERPISAH
+    // 🔥 AUTO SAVE SHARELOK (FIX JEDA CHAT)
     const locNow = getLocation(msg);
     if (locNow && lastInet[chatId]) {
       await saveData({ inet: lastInet[chatId] }, locNow);
@@ -235,27 +237,8 @@ async function handleMsg(msg) {
 
     lastInet[chatId] = data.inet;
 
-    // 🔔 REMINDER (BALIK SEPERTI AWAL)
-    const fields = {
-      "INET/TLP": data.inet,
-      "CP PELANGGAN": data.cp,
-      "ALAMAT LENGKAP": data.alamat,
-      "NAMA ODP": data.odp
-    };
-
-    const kosong = Object.keys(fields).filter(k => !fields[k]);
-    const semuaKosong = Object.values(fields).every(v => !v);
-
-    if (kosong.length && !semuaKosong) {
-      const user = msg.from.username ? '@' + msg.from.username : msg.from.first_name;
-
-      await bot.sendMessage(
-        chatId,
-        `⚠️ ${user} data belum lengkap (${kosong.join(', ')}) silahkan dilengkapi.`
-      );
-    }
-
     const shareloc = lastLocation[chatId] || '';
+
     const res = await saveData(data, shareloc);
 
     if (res.type === 'insert') {
@@ -264,13 +247,17 @@ async function handleMsg(msg) {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
     }
 
+    if (res.shareChanged) {
+      await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+    }
+
   } catch (err) {
     console.log(err);
   }
 }
 
 // =======================
-// 🔎 /CEK
+// 🔎 /CEK FINAL
 // =======================
 bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   try {
@@ -302,7 +289,7 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
     }
 
     const text = `
-🌐 INTERNET : ${row[3] || '-'}
+🌐  INTERNET : ${row[3] || '-'}
 📞 CP : ${row[4] || '-'}
 📍 ALAMAT : ${row[7] || '-'}
 📡 ODP : ${row[8] || '-'}
@@ -315,4 +302,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL STABLE - ALL FIXED');
+console.log('🚀 FINAL STABLE (NO CHANGE FLOW)');
