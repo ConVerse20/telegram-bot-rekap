@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL (LOCK - TANPA UBAH FLOW)
+// 🚀 MCU BOT FINAL (LOCK - DATA DULU BARU SHARELOK)
 // =======================
 
 const { google } = require('googleapis');
@@ -31,7 +31,7 @@ app.listen(PORT, async () => {
 });
 
 // =======================
-// 🧠 UTIL (ASLI)
+// 🧠 UTIL
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
@@ -59,7 +59,7 @@ function normalizeCP(cp) {
 }
 
 // =======================
-// 📍 SHARELOK (ASLI)
+// 📍 SHARELOK (FIX SUPPORT LINK)
 // =======================
 function getLocation(msg) {
   if (msg.location)
@@ -69,14 +69,21 @@ function getLocation(msg) {
     return `${msg.reply_to_message.location.latitude},${msg.reply_to_message.location.longitude}`;
 
   const text = msg.text || msg.caption || '';
+
   let m = text.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+  if (m) return `${m[1]},${m[2]}`;
+
+  m = text.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return `${m[1]},${m[2]}`;
+
+  m = text.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (m) return `${m[1]},${m[2]}`;
 
   return '';
 }
 
 // =======================
-// 📦 BUFFER (ASLI)
+// 📦 BUFFER
 // =======================
 const bufferMsg = {};
 const lastLocation = {};
@@ -87,7 +94,7 @@ function addBuffer(chatId, msg) {
 }
 
 // =======================
-// 🧠 PARSER (ASLI)
+// 🧠 PARSER
 // =======================
 function get(label, txt) {
   const r = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
@@ -115,7 +122,7 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 💾 GOOGLE SHEET (ASLI)
+// 💾 GOOGLE SHEET
 // =======================
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
@@ -196,14 +203,13 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// 🚀 MAIN (ASLI + FIX /CEK)
+// 🚀 MAIN
 // =======================
 bot.on('message', handleMsg);
 bot.on('edited_message', handleMsg);
 
 async function handleMsg(msg) {
   try {
-    // 🔥 FIX /CEK TIDAK KETELAN
     if (msg.text && msg.text.startsWith('/cek')) return;
 
     const chatId = msg.chat.id;
@@ -227,33 +233,16 @@ async function handleMsg(msg) {
 
     const shareloc = lastLocation[chatId] || '';
 
-    const kosong = [];
-    if (!data.inet) kosong.push("INET");
-    if (!data.cp) kosong.push("CP");
-    if (!data.alamat) kosong.push("ALAMAT");
-    if (!data.odp) kosong.push("ODP");
-
-    const semuaKosong = kosong.length === 4;
-
-    if (kosong.length && !semuaKosong) {
-      const user = msg.from.username
-        ? '@' + msg.from.username
-        : msg.from.first_name;
-
-      await bot.sendMessage(
-        chatId,
-        `⚠️ ${user} data belum lengkap (${kosong.join(', ')}) silahkan dilengkapi.`
-      );
-    }
-
     const res = await saveData(data, shareloc);
 
+    // ✅ DATA DULU
     if (res.type === 'insert') {
       await bot.sendMessage(chatId, '🆕 Data Baru sudah Dicatet ke Google Sheet ✅');
     } else {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
     }
 
+    // ✅ BARU SHARELOK
     if (res.shareChanged) {
       await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
     }
@@ -264,9 +253,9 @@ async function handleMsg(msg) {
 }
 
 // =======================
-// 🔎 /CEK (ASLI DIKEMBALIKAN)
+// 🔎 /CEK (FINAL SIMPLE)
 // =======================
-bot.onText(/\/cek (.+)/, async (msg, match) => {
+bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   try {
     const chatId = msg.chat.id;
     const inet = match[1].trim();
@@ -286,17 +275,16 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
       return bot.sendMessage(chatId, '❌ Data tidak ditemukan');
     }
 
-    const latlon = row[10] || '';
+    const loc = row[10] || '';
 
-    // ✅ KIRIM MAP DULU (kalau ada)
-    if (latlon) {
-      const [lat, lon] = latlon.split(',');
+    // map dulu
+    if (loc) {
+      const [lat, lon] = loc.split(',');
       if (lat && lon) {
         await bot.sendLocation(chatId, parseFloat(lat), parseFloat(lon));
       }
     }
 
-    // ✅ FORMAT SIMPLE (SEPERTI SS KANAN)
     const text = `
 📡 INTERNET : ${row[3] || '-'}
 📞 CP : ${row[4] || '-'}
@@ -310,4 +298,5 @@ bot.onText(/\/cek (.+)/, async (msg, match) => {
     console.log(err);
   }
 });
-console.log('🚀 FINAL LOCK TANPA MERUBAH FITUR');
+
+console.log('🚀 FINAL STABLE');
