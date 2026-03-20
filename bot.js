@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL (LOCK + TAMBAHAN /CEK & SHARELOK)
+// 🚀 MCU BOT FINAL (LOCK - TANPA UBAH FLOW)
 // =======================
 
 const { google } = require('googleapis');
@@ -31,19 +31,16 @@ app.listen(PORT, async () => {
 });
 
 // =======================
-// 🧠 UTIL
+// 🧠 UTIL (ASLI)
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 function clean(v) {
   if (!v) return '';
   v = v.trim();
-
   if (/^(STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS)/i.test(v))
     return '';
-
   if (v === '-' || v === ':' || v === '') return '';
-
   return v;
 }
 
@@ -53,7 +50,6 @@ function clean(v) {
 function normalizeCP(cp) {
   if (!cp) return '';
   cp = cp.replace(/\s+/g, '');
-
   return cp.split('/').map(n => {
     if (n.startsWith('+62')) return n;
     if (n.startsWith('62')) return '+62' + n.slice(2);
@@ -63,7 +59,7 @@ function normalizeCP(cp) {
 }
 
 // =======================
-// 📍 SHARELOK
+// 📍 SHARELOK (ASLI)
 // =======================
 function getLocation(msg) {
   if (msg.location)
@@ -80,7 +76,7 @@ function getLocation(msg) {
 }
 
 // =======================
-// 📦 BUFFER
+// 📦 BUFFER (ASLI)
 // =======================
 const bufferMsg = {};
 const lastLocation = {};
@@ -91,7 +87,7 @@ function addBuffer(chatId, msg) {
 }
 
 // =======================
-// 🧠 PARSER
+// 🧠 PARSER (ASLI)
 // =======================
 function get(label, txt) {
   const r = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
@@ -119,7 +115,7 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 💾 GOOGLE SHEET
+// 💾 GOOGLE SHEET (ASLI)
 // =======================
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
@@ -200,13 +196,16 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// 🚀 MAIN
+// 🚀 MAIN (ASLI + FIX /CEK)
 // =======================
 bot.on('message', handleMsg);
 bot.on('edited_message', handleMsg);
 
 async function handleMsg(msg) {
   try {
+    // 🔥 FIX /CEK TIDAK KETELAN
+    if (msg.text && msg.text.startsWith('/cek')) return;
+
     const chatId = msg.chat.id;
 
     const loc = getLocation(msg);
@@ -265,7 +264,7 @@ async function handleMsg(msg) {
 }
 
 // =======================
-// 🔎 /CEK (DITAMBAHKAN)
+// 🔎 /CEK (ASLI DIKEMBALIKAN)
 // =======================
 bot.onText(/\/cek (.+)/, async (msg, match) => {
   try {
@@ -316,4 +315,4 @@ SHARELOK: ${row[10] || '-'}
   }
 });
 
-console.log('🚀 FINAL LOCK + /CEK + SHARELOK');
+console.log('🚀 FINAL LOCK TANPA MERUBAH FITUR');
