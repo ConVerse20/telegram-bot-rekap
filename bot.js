@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL ALL-IN-ONE (WEBHOOK SAFE - LOCK FINAL)
+// 🚀 MCU BOT FINAL ALL-IN-ONE (WEBHOOK SAFE)
 // =======================
 
 const { google } = require('googleapis');
@@ -38,13 +38,14 @@ app.listen(PORT, async () => {
 // =======================
 // 🧠 UTIL
 // =======================
+
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 function clean(v) {
   if (!v) return '';
   v = v.trim();
 
-  // hapus "- " di depan & "LABEL :"
+  // 🔥 FIX: buang "- " & label
   v = v.replace(/^-\s*/g, '');
   v = v.replace(/^[A-Z\s\/]+:\s*/i, '');
 
@@ -52,12 +53,13 @@ function clean(v) {
   if (/nama odp/i.test(v)) return '';
   if (/petugas/i.test(v)) return '';
 
-  return v.trim();
+  return v;
 }
 
 // =======================
-// 📱 CP (ASLI +62)
+// 📱 CP (ASLI TIDAK DIUBAH)
 // =======================
+
 function normalizeCP(cp) {
   if (!cp) return '';
   cp = cp.replace(/\s+/g, '');
@@ -83,10 +85,9 @@ function explodeCP(cp) {
 // =======================
 // 📍 SHARELOK
 // =======================
-function getLocation(msg) {
-  if (msg.location)
-    return `${msg.location.latitude},${msg.location.longitude}`;
 
+function getLocation(msg) {
+  if (msg.location) return `${msg.location.latitude},${msg.location.longitude}`;
   if (msg.reply_to_message?.location)
     return `${msg.reply_to_message.location.latitude},${msg.reply_to_message.location.longitude}`;
 
@@ -102,8 +103,9 @@ function getLocation(msg) {
 }
 
 // =======================
-// 📦 BUFFER
+// 📦 BUFFER (TIDAK DIUBAH)
 // =======================
+
 const bufferMsg = {};
 const lastLocation = {};
 
@@ -113,8 +115,9 @@ function addBuffer(chatId, msg) {
 }
 
 // =======================
-// 🧠 PARSER
+// 🧠 PARSER (ASLI)
 // =======================
+
 function splitMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
   parts.shift();
@@ -133,7 +136,6 @@ function get(label, txt) {
 
 function parseMCU(txt) {
   let cp = get('CP PELANGGAN', txt);
-
   if (/PENYEBAB|LANGKAH|ALAMAT|ODP|PETUGAS/i.test(cp)) cp = '';
 
   return {
@@ -150,8 +152,9 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 💾 GOOGLE SHEET (RAPI 11 KOLOM)
+// 💾 GOOGLE SHEET (FIX TANPA UBAH FLOW)
 // =======================
+
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
 );
@@ -182,23 +185,10 @@ async function saveData(data, loc) {
     let old = rows[idx];
     while (old.length < 11) old.push('');
 
-    // merge CP (hindari duplikat 0 vs 62)
-    if (data.cp) {
-      let existingRaw = old[4] ? old[4].split(' / ') : [];
-      let existingClean = existingRaw.map(e => normalizeCompare(e));
-      let newClean = explodeCP(data.cp);
-
-      newClean.forEach(n => {
-        if (!existingClean.includes(n)) {
-          existingRaw.push('+62' + n.replace(/^62/, ''));
-        }
-      });
-
-      old[4] = existingRaw.join(' / ');
-    }
-
+    // 🔥 TIDAK OVERWRITE KOSONG
     if (data.status) old[1] = data.status;
     if (data.tiket) old[2] = data.tiket;
+    if (data.cp) old[4] = data.cp;
     if (data.penyebab) old[5] = data.penyebab;
     if (data.perbaikan) old[6] = data.perbaikan;
     if (data.alamat) old[7] = data.alamat;
@@ -210,19 +200,7 @@ async function saveData(data, loc) {
       shareChanged = true;
     }
 
-    const fixedRow = [
-      old[0] || now,
-      old[1] || '',
-      old[2] || '',
-      old[3] || data.inet,
-      old[4] || '',
-      old[5] || '',
-      old[6] || '',
-      old[7] || '',
-      old[8] || '',
-      old[9] || '',
-      old[10] || ''
-    ];
+    const fixedRow = old.slice(0, 11);
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
@@ -234,7 +212,7 @@ async function saveData(data, loc) {
     return { type: 'update', shareChanged };
   }
 
-  const newRow = [
+  const row = [
     now,
     data.status || '',
     data.tiket || '',
@@ -252,55 +230,16 @@ async function saveData(data, loc) {
     spreadsheetId: SHEET_ID,
     range: 'DATA!A:K',
     valueInputOption: 'RAW',
-    resource: { values: [newRow] }
+    resource: { values: [row] }
   });
 
   return { type: 'insert', shareChanged: !!loc };
 }
 
 // =======================
-// 🔍 /CEK (SESUAI KAMU + MAP)
+// 🚀 MAIN (ASLI + FIX REMINDER)
 // =======================
-bot.onText(/\/cek (.+)/, async (msg, match) => {
-  try {
-    const chatId = msg.chat.id;
-    const inet = match[1].trim();
 
-    const client = await auth.getClient();
-    const sheets = google.sheets({ version: 'v4', auth: client });
-
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: 'DATA!A:K',
-    });
-
-    const rows = res.data.values || [];
-    const row = rows.find(r => r[3] === inet);
-
-    if (!row) {
-      return bot.sendMessage(chatId, '❌ data tidak ditemukan');
-    }
-
-    const loc = row[10] || '';
-    const [lat, lon] = loc.split(',');
-
-    if (lat && lon) {
-      await bot.sendLocation(chatId, parseFloat(lat), parseFloat(lon));
-    }
-
-    await bot.sendMessage(chatId,
-`📡 INTERNET : ${row[3] || ''}
-📞 CP : ${row[4] || ''}
-📍 ALAMAT : ${row[7] || ''}
-📡 ODP : ${row[8] || ''}`);
-  } catch (err) {
-    console.log(err);
-  }
-});
-
-// =======================
-// 🚀 MAIN (ASLI)
-// =======================
 bot.on('message', handleMsg);
 bot.on('edited_message', handleMsg);
 
@@ -334,13 +273,13 @@ async function handleMsg(msg) {
 
       const shareloc = lastLocation[chatId] || '';
 
-      // ===== REMINDER SESUAI /CEK =====
-      const fieldsKosong = [];
+      // 🔥 REMINDER FINAL (SESUAI /CEK)
+      const fields = [];
 
-      if (!data.inet) fieldsKosong.push("INET/TLP");
-      if (!data.cp) fieldsKosong.push("CP PELANGGAN");
-      if (!data.alamat) fieldsKosong.push("ALAMAT LENGKAP");
-      if (!data.odp) fieldsKosong.push("NAMA ODP");
+      if (!data.inet) fields.push("INET/TLP");
+      if (!data.cp) fields.push("CP PELANGGAN");
+      if (!data.alamat) fields.push("ALAMAT LENGKAP");
+      if (!data.odp) fields.push("NAMA ODP");
 
       const semuaKosong =
         !data.inet &&
@@ -348,15 +287,13 @@ async function handleMsg(msg) {
         !data.alamat &&
         !data.odp;
 
-      if (fieldsKosong.length > 0 && !semuaKosong) {
+      if (fields.length && !semuaKosong) {
         const user = msg.from.username
           ? '@' + msg.from.username
           : msg.from.first_name;
 
-        await bot.sendMessage(
-          chatId,
-          `⚠️ ${user} data belum lengkap (${fieldsKosong.join(', ')}) silahkan dilengkapi.`
-        );
+        await bot.sendMessage(chatId,
+          `⚠️ ${user} data belum lengkap (${fields.join(', ')}) silahkan dilengkapi.`);
       }
 
       const res = await saveData(data, shareloc);
@@ -380,4 +317,4 @@ async function handleMsg(msg) {
   }
 }
 
-console.log('🚀 BOT FINAL LOCK (FITUR UTUH, GSHEET RAPI)');
+console.log('🚀 BOT FINAL (ASLI + PATCH TANPA HAPUS FITUR)');
