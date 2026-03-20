@@ -37,16 +37,13 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 
 function clean(v) {
   if (!v) return '';
-
   v = v.trim();
-
   v = v.replace(/^[:\-\s]+/, '').trim();
 
   if (/^(STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS)/i.test(v))
     return '';
 
   if (v === '-' || v === ':' || v === '') return '';
-
   if (/^[:\-]+$/.test(v)) return '';
 
   return v;
@@ -114,7 +111,6 @@ function get(label, txt) {
   val = val.replace(/^[:\-\s]+/, '').trim();
 
   if (val === '') return '';
-
   return val;
 }
 
@@ -130,6 +126,14 @@ function parseMCU(txt) {
     odp: clean(get('NAMA ODP', txt)),
     petugas: clean(get('PETUGAS', txt)),
   };
+}
+
+// =======================
+// 🧠 EXTRACT MCU ONLY (FIX)
+// =======================
+function extractMCU(text) {
+  const match = text.match(/MEDICAL CHECK UP PELANGGAN[\s\S]*?PETUGAS\s*:\s*[^\n]*/i);
+  return match ? match[0] : '';
 }
 
 // =======================
@@ -290,10 +294,13 @@ async function handleMsg(msg) {
 
     bufferMsg[chatId] = [];
 
-    if (!/MEDICAL/i.test(combined)) return;
+    // =======================
+    // 🔥 AMBIL HANYA MCU
+    // =======================
+    const mcuText = extractMCU(combined);
+    if (!mcuText) return;
 
-    const data = parseMCU(combined);
-
+    const data = parseMCU(mcuText);
     const emptyFields = getEmptyFields(data);
     const userTag = getUserTag(msg);
 
@@ -313,7 +320,6 @@ async function handleMsg(msg) {
     ];
 
     const isAllEmpty = allFields.every(v => !v || v.toString().trim() === '');
-
     if (isAllEmpty) return;
 
     if (data.inet) {
@@ -406,4 +412,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL STABLE ULTRA (ALL FIELD VALIDATION + SMART STOP)');
+console.log('🚀 FINAL STABLE MAX (ANTI CHAT PANJANG + SMART MCU)');
