@@ -1,10 +1,10 @@
 // =======================
-// 🚀 MCU BOT FINAL FIXED (NO CHANGE BEHAVIOR)
+// 🚀 MCU BOT FINAL (FILTER KOSONG TOTAL)
 // =======================
 
 const { google } = require('googleapis');
 const TelegramBot = require('node-telegram-bot-api');
-const moment = require('moment-timezone');
+const moment = require('moment');
 const express = require('express');
 
 // ===== ENV =====
@@ -87,18 +87,6 @@ function normalizeCP(cp) {
   }).join(' / ');
 }
 
-function normalizeCompare(cp) {
-  return cp.replace(/\D/g, '').replace(/^0/, '62');
-}
-
-function explodeCP(cp) {
-  if (!cp) return [];
-  return cp.split('/').map(n => normalizeCompare(n));
-}
-
-// =======================
-// 📍 LOCATION
-// =======================
 function getLocation(msg) {
   if (msg.location)
     return `${msg.location.latitude},${msg.location.longitude}`;
@@ -190,13 +178,13 @@ async function getSheetRows(sheets) {
     })
   );
 
-  sheetCache = (res.data.values || []).filter(r => r[3]); // FIX baris kosong
+  sheetCache = (res.data.values || []).filter(r => r[3]);
   lastFetch = Date.now();
   return sheetCache;
 }
 
 async function saveData(data, loc) {
-  if (!data.inet) return { type: 'skip' }; // FIX jangan insert kosong
+  if (!data.inet) return { type: 'skip' };
 
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
@@ -204,7 +192,7 @@ async function saveData(data, loc) {
   const rows = await getSheetRows(sheets);
   let idx = rows.findIndex(r => r[3] === data.inet);
 
-  const now = moment().tz("Asia/Jakarta").format('YYYY-MM-DD HH:mm:ss');
+  const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
 
   const row = [
     now,
@@ -265,7 +253,7 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// 🚀 MAIN (TIDAK DIUBAH)
+// 🚀 MAIN
 // =======================
 bot.on('message', handleMsg);
 bot.on('edited_message', handleMsg);
@@ -297,8 +285,10 @@ async function handleMsg(msg) {
     for (let b of blocks) {
       const data = parseMCU(b);
 
-      const adaIsi = Object.values(data).some(v => v);
-      if (!adaIsi) continue;
+      // ✅ FIX BARU: SKIP TOTAL KOSONG
+      const semuaKosong = Object.values(data).every(v => !v);
+      if (semuaKosong) continue;
+
       if (!data.inet) continue;
 
       const shareloc = lastLocation[chatId] || '';
@@ -312,9 +302,9 @@ async function handleMsg(msg) {
       };
 
       const kosong = Object.keys(fields).filter(k => !fields[k]);
-      const semuaKosong = Object.values(fields).every(v => !v);
+      const semuaKosongField = Object.values(fields).every(v => !v);
 
-      if (kosong.length && !semuaKosong) {
+      if (kosong.length && !semuaKosongField) {
         const user = msg.from.username
           ? '@' + msg.from.username
           : msg.from.first_name;
@@ -355,4 +345,4 @@ async function handleMsg(msg) {
 process.on('unhandledRejection', console.error);
 process.on('uncaughtException', console.error);
 
-console.log('🚀 BOT FINAL FIXED (STABLE)');
+console.log('🚀 BOT FINAL FIX ALL');
