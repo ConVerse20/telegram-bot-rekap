@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL ALL-IN-ONE (WEBHOOK SAFE + FIX KOSONG TOTAL FINAL)
+// 🚀 MCU BOT FINAL ALL-IN-ONE (WEBHOOK SAFE + FIX KOSONG TOTAL AKURAT)
 // =======================
 
 const { google } = require('googleapis');
@@ -51,6 +51,17 @@ function clean(v) {
   return v;
 }
 
+// =======================
+// 🔥 FIX FINAL KOSONG TOTAL
+// =======================
+function isReallyEmpty(txt) {
+  return txt
+    .replace(/MEDICAL CHECK UP PELANGGAN/gi, '')
+    .replace(/STATUS|NO TIKET|INET\/TLP|CP PELANGGAN|PENYEBAB GANGGUAN|LANGKAH PERBAIKAN|ALAMAT LENGKAP|NAMA ODP|PETUGAS/gi, '')
+    .replace(/[:\-\s\n]/g, '') // buang semua simbol & spasi
+    .trim() === '';
+}
+
 // normalize display
 function normalizeCP(cp) {
   if (!cp) return '';
@@ -65,7 +76,6 @@ function normalizeCP(cp) {
   }).join(' / ');
 }
 
-// normalize compare
 function normalizeCompare(cp) {
   return cp.replace(/\D/g, '').replace(/^0/, '62');
 }
@@ -235,21 +245,10 @@ async function handleMsg(msg) {
 
     for (let b of blocks) {
 
+      // 🔥 FIX FINAL
+      if (isReallyEmpty(b)) continue;
+
       const data = parseMCU(b);
-
-      // 🔥 FIX FINAL (AKURAT 100%)
-      const semuaKosong =
-        !data.status &&
-        !data.tiket &&
-        !data.inet &&
-        !data.cp &&
-        !data.penyebab &&
-        !data.perbaikan &&
-        !data.alamat &&
-        !data.odp &&
-        !data.petugas;
-
-      if (semuaKosong) continue;
 
       const adaIsi = Object.values(data).some(v => v);
       if (!adaIsi) continue;
@@ -266,9 +265,9 @@ async function handleMsg(msg) {
       };
 
       const kosong = Object.keys(fields).filter(k => !fields[k]);
-      const semuaKosongField = Object.values(fields).every(v => !v);
+      const semuaKosong = Object.values(fields).every(v => !v);
 
-      if (kosong.length && !semuaKosongField) {
+      if (kosong.length && !semuaKosong) {
         const user = msg.from.username
           ? '@' + msg.from.username
           : msg.from.first_name;
@@ -300,4 +299,4 @@ async function handleMsg(msg) {
   }
 }
 
-console.log('🚀 BOT FINAL FIX BENAR');
+console.log('🚀 BOT FINAL FIX 100%');
