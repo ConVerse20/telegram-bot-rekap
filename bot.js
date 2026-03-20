@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL (FILTER KOSONG TOTAL)
+// 🚀 MCU BOT FINAL (FIX TOTAL KOSONG REAL)
 // =======================
 
 const { google } = require('googleapis');
@@ -87,6 +87,9 @@ function normalizeCP(cp) {
   }).join(' / ');
 }
 
+// =======================
+// 📍 LOCATION
+// =======================
 function getLocation(msg) {
   if (msg.location)
     return `${msg.location.latitude},${msg.location.longitude}`;
@@ -136,15 +139,11 @@ function get(label, txt) {
 }
 
 function parseMCU(txt) {
-  let cp = get('CP PELANGGAN', txt);
-
-  if (/PENYEBAB|LANGKAH|ALAMAT|ODP|PETUGAS/i.test(cp)) cp = '';
-
   return {
     status: clean(get('STATUS', txt)),
     tiket: clean(get('NO TIKET', txt)),
     inet: clean(get('INET/TLP', txt)),
-    cp: normalizeCP(clean(cp)),
+    cp: normalizeCP(clean(get('CP PELANGGAN', txt))),
     penyebab: clean(get('PENYEBAB GANGGUAN', txt)),
     perbaikan: clean(get('LANGKAH PERBAIKAN', txt)),
     alamat: clean(get('ALAMAT LENGKAP', txt)),
@@ -196,48 +195,28 @@ async function saveData(data, loc) {
 
   const row = [
     now,
-    data.status || '',
-    data.tiket || '',
-    data.inet || '',
-    data.cp || '',
-    data.penyebab || '',
-    data.perbaikan || '',
-    data.alamat || '',
-    data.odp || '',
-    data.petugas || '',
-    loc || '',
+    data.status,
+    data.tiket,
+    data.inet,
+    data.cp,
+    data.penyebab,
+    data.perbaikan,
+    data.alamat,
+    data.odp,
+    data.petugas,
+    loc
   ];
 
-  let shareChanged = false;
-
   if (idx !== -1) {
-    let old = rows[idx];
-    while (old.length < 11) old.push('');
-
-    if (data.cp) old[4] = data.cp;
-    if (data.status) old[1] = data.status;
-    if (data.tiket) old[2] = data.tiket;
-    if (data.penyebab) old[5] = data.penyebab;
-    if (data.perbaikan) old[6] = data.perbaikan;
-    if (data.alamat) old[7] = data.alamat;
-    if (data.odp) old[8] = data.odp;
-    if (data.petugas) old[9] = data.petugas;
-
-    if (loc && loc !== old[10]) {
-      old[10] = loc;
-      shareChanged = true;
-    }
-
     await retry(() =>
       sheets.spreadsheets.values.update({
         spreadsheetId: SHEET_ID,
         range: `DATA!A${idx + 1}:K${idx + 1}`,
         valueInputOption: 'USER_ENTERED',
-        resource: { values: [old] }
+        resource: { values: [row] }
       })
     );
-
-    return { type: 'update', shareChanged };
+    return { type: 'update' };
   }
 
   await retry(() =>
@@ -249,7 +228,7 @@ async function saveData(data, loc) {
     })
   );
 
-  return { type: 'insert', shareChanged: !!loc };
+  return { type: 'insert' };
 }
 
 // =======================
@@ -260,14 +239,7 @@ bot.on('edited_message', handleMsg);
 
 async function handleMsg(msg) {
   try {
-    if (processing.has(msg.message_id)) return;
-    processing.add(msg.message_id);
-    setTimeout(() => processing.delete(msg.message_id), 5000);
-
     const chatId = msg.chat.id;
-
-    const loc = getLocation(msg);
-    if (loc) lastLocation[chatId] = loc;
 
     addBuffer(chatId, msg);
     await new Promise(r => setTimeout(r, 1000));
@@ -285,55 +257,30 @@ async function handleMsg(msg) {
     for (let b of blocks) {
       const data = parseMCU(b);
 
-      // ✅ FIX BARU: SKIP TOTAL KOSONG
-      const semuaKosong = Object.values(data).every(v => !v);
+      // ✅ FIX FINAL: semua field kosong → SKIP TOTAL
+      const semuaKosong =
+        !data.status &&
+        !data.tiket &&
+        !data.inet &&
+        !data.cp &&
+        !data.penyebab &&
+        !data.perbaikan &&
+        !data.alamat &&
+        !data.odp &&
+        !data.petugas;
+
       if (semuaKosong) continue;
 
       if (!data.inet) continue;
 
-      const shareloc = lastLocation[chatId] || '';
-
-      const fields = {
-        "INET/TLP": data.inet,
-        "CP PELANGGAN": data.cp,
-        "ALAMAT LENGKAP": data.alamat,
-        "NAMA ODP": data.odp,
-        "PETUGAS": data.petugas
-      };
-
-      const kosong = Object.keys(fields).filter(k => !fields[k]);
-      const semuaKosongField = Object.values(fields).every(v => !v);
-
-      if (kosong.length && !semuaKosongField) {
-        const user = msg.from.username
-          ? '@' + msg.from.username
-          : msg.from.first_name;
-
-        const now = Date.now();
-
-        if (!lastWarn[chatId] || now - lastWarn[chatId] > 10000) {
-          lastWarn[chatId] = now;
-
-          await bot.sendMessage(
-            chatId,
-            `⚠️ ${user} data belum lengkap (${kosong.join(', ')}) silahkan dilengkapi.`
-          );
-        }
-      }
-
-      const res = await saveData(data, shareloc);
+      const res = await saveData(data, '');
 
       if (res.type === 'insert') {
         await bot.sendMessage(chatId,
           `🆕 Data Baru sudah Dicatet ke Google Sheet ✅`);
-      } else if (res.type === 'update') {
+      } else {
         await bot.sendMessage(chatId,
           `🔄 Data berhasil di-update ke Google Sheet ✅`);
-      }
-
-      if (res.shareChanged) {
-        await bot.sendMessage(chatId,
-          `📍 sharelok berhasil di-update ke Google Sheet ✅`);
       }
     }
 
@@ -342,7 +289,4 @@ async function handleMsg(msg) {
   }
 }
 
-process.on('unhandledRejection', console.error);
-process.on('uncaughtException', console.error);
-
-console.log('🚀 BOT FINAL FIX ALL');
+console.log('🚀 BOT FIX TOTAL KOSONG');
