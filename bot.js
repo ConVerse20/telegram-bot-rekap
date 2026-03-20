@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL ALL-IN-ONE (ASLI + FIX FINAL STABIL)
+// 🚀 MCU BOT FINAL ALL-IN-ONE (WEBHOOK SAFE + PATCH MINIMAL)
 // =======================
 
 const { google } = require('googleapis');
@@ -52,7 +52,7 @@ function clean(v) {
 }
 
 // =======================
-// 🔥 FILTER KOSONG
+// 🔥 PATCH: FILTER KOSONG TOTAL
 // =======================
 function isReallyEmpty(txt) {
   return txt
@@ -64,7 +64,7 @@ function isReallyEmpty(txt) {
 }
 
 // =======================
-// 📱 CP NORMALIZER (08 + ANTI DUPLIKAT)
+// 📱 PATCH: CP NORMALIZE (08 + ANTI DUPLIKAT)
 // =======================
 function normalizeCP(cp) {
   if (!cp) return '';
@@ -123,7 +123,7 @@ function addBuffer(chatId, msg) {
 }
 
 // =======================
-// 🧠 PARSER
+// 🧠 PARSER (ASLI)
 // =======================
 function splitMCU(text) {
   const parts = text.split(/MEDICAL\s*CHECK\s*UP\s*PELANGGAN\s*:/i);
@@ -160,7 +160,7 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 💾 GOOGLE SHEET (FIX TANPA UBAH LOGIC)
+// 💾 GOOGLE SHEET (PATCH RAPI TANPA UBAH LOGIC)
 // =======================
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
@@ -186,13 +186,27 @@ async function saveData(data, loc) {
 
   const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
 
+  const row = [
+    now,
+    data.status || '',
+    data.tiket || '',
+    data.inet || '',
+    data.cp || '',
+    data.penyebab || '',
+    data.perbaikan || '',
+    data.alamat || '',
+    data.odp || '',
+    data.petugas || '',
+    loc || '',
+  ];
+
   let shareChanged = false;
 
   if (idx !== -1) {
     let old = rows[idx];
     while (old.length < 11) old.push('');
 
-    // ===== MERGE CP (FIX DUPLIKAT 08 vs 62)
+    // ===== CP MERGE FIX DUPLIKAT =====
     if (data.cp) {
       let existingRaw = old[4] ? old[4].split(' / ') : [];
       let existingClean = existingRaw.map(e => normalizeCompare(e));
@@ -220,18 +234,19 @@ async function saveData(data, loc) {
       shareChanged = true;
     }
 
+    // 🔥 PATCH: PAKSA FORMAT 11 KOLOM
     const fixedRow = [
       old[0] || now,
-      old[1],
-      old[2],
-      old[3],
-      old[4],
-      old[5],
-      old[6],
-      old[7],
-      old[8],
-      old[9],
-      old[10]
+      old[1] || '',
+      old[2] || '',
+      old[3] || data.inet,
+      old[4] || '',
+      old[5] || '',
+      old[6] || '',
+      old[7] || '',
+      old[8] || '',
+      old[9] || '',
+      old[10] || ''
     ];
 
     await sheets.spreadsheets.values.update({
@@ -244,70 +259,15 @@ async function saveData(data, loc) {
     return { type: 'update', shareChanged };
   }
 
-  const newRow = [
-    now,
-    data.status,
-    data.tiket,
-    data.inet,
-    data.cp,
-    data.penyebab,
-    data.perbaikan,
-    data.alamat,
-    data.odp,
-    data.petugas,
-    loc || ''
-  ];
-
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
     range: 'DATA!A:K',
     valueInputOption: 'USER_ENTERED',
-    resource: { values: [newRow] }
+    resource: { values: [row] }
   });
 
   return { type: 'insert', shareChanged: !!loc };
 }
-
-// =======================
-// 🔍 /cek (ASLI)
-// =======================
-bot.onText(/\/cek (.+)/, async (msg, match) => {
-  try {
-    const chatId = msg.chat.id;
-    const inet = match[1].trim();
-
-    const client = await auth.getClient();
-    const sheets = google.sheets({ version: 'v4', auth: client });
-
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: 'DATA!A:K',
-    });
-
-    const rows = res.data.values || [];
-    const row = rows.find(r => r[3] === inet);
-
-    if (!row) {
-      return bot.sendMessage(chatId, `❌ INET ${inet} tidak ditemukan`);
-    }
-
-    await bot.sendMessage(chatId,
-`📡 DATA
-
-INET/TLP : ${row[3] || ''}
-STATUS   : ${row[1] || ''}
-NO TIKET : ${row[2] || ''}
-CP       : ${row[4] || ''}
-PENYEBAB : ${row[5] || ''}
-PERBAIKAN: ${row[6] || ''}
-ALAMAT   : ${row[7] || ''}
-ODP      : ${row[8] || ''}
-PETUGAS  : ${row[9] || ''}
-SHARELOK : ${row[10] || ''}`);
-  } catch (err) {
-    console.log(err);
-  }
-});
 
 // =======================
 // 🚀 MAIN (ASLI)
@@ -390,4 +350,4 @@ async function handleMsg(msg) {
   }
 }
 
-console.log('🚀 BOT FINAL STABLE (NO CHANGE BEHAVIOR)');
+console.log('🚀 BOT FINAL PATCH MINIMAL (ASLI TERJAGA)');
