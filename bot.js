@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL (LOCK - FIX PARSER + REMINDER)
+// 🚀 MCU BOT FINAL (LOCK - NO CHANGE FLOW)
 // =======================
 
 const { google } = require('googleapis');
@@ -38,13 +38,19 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 function clean(v) {
   if (!v) return '';
   v = v.trim();
-  if (v === '-' || v === ':' || v === '') return '';
-  if (/contoh/i.test(v)) return '';
+
+  if (
+    v === '-' ||
+    v === ':' ||
+    v === '' ||
+    /STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|ODP|PETUGAS/i.test(v)
+  ) return '';
+
   return v;
 }
 
 // =======================
-// 📱 CP
+// 📱 CP NORMAL (ASLI)
 // =======================
 function normalizeCP(cp) {
   if (!cp) return '';
@@ -94,21 +100,26 @@ function addBuffer(chatId, msg) {
 }
 
 // =======================
-// 🧠 PARSER (FIX)
+// 🧠 PARSER (FIX FINAL)
 // =======================
 function get(label, txt) {
-  const regex = new RegExp(
-    `${label}\\s*:\\s*([\\s\\S]*?)(?=\\n\\s*-?\\s*(STATUS|NO TIKET|INET|CP PELANGGAN|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS)\\s*:|$)`,
-    'i'
-  );
+  const lines = txt.split('\n');
 
-  const match = txt.match(regex);
-  if (!match) return '';
+  for (let line of lines) {
+    if (line.toUpperCase().includes(label)) {
+      let val = line.split(':').slice(1).join(':').trim();
 
-  let val = match[1].trim();
-  if (/contoh/i.test(val)) return '';
+      if (!val || val === '-' || val === ':') return '';
 
-  return val;
+      if (/STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|ODP|PETUGAS/i.test(val)) {
+        return '';
+      }
+
+      return val;
+    }
+  }
+
+  return '';
 }
 
 function parseMCU(txt) {
@@ -198,7 +209,7 @@ async function handleMsg(msg) {
 
     const chatId = msg.chat.id;
 
-    // ===== SHARELOK TERPISAH =====
+    // SHARELOK TERPISAH
     const locNow = getLocation(msg);
     if (locNow && lastInet[chatId]) {
       await saveData({ inet: lastInet[chatId] }, locNow);
@@ -224,20 +235,20 @@ async function handleMsg(msg) {
 
     lastInet[chatId] = data.inet;
 
-    // =======================
-    // 🔔 REMINDER FIELD KOSONG (BALIK SEPERTI AWAL)
-    // =======================
+    // 🔔 REMINDER (BALIK SEPERTI AWAL)
     const fields = {
-      "INET": data.inet,
-      "CP": data.cp,
-      "ALAMAT": data.alamat,
-      "ODP": data.odp
+      "INET/TLP": data.inet,
+      "CP PELANGGAN": data.cp,
+      "ALAMAT LENGKAP": data.alamat,
+      "NAMA ODP": data.odp
     };
 
     const kosong = Object.keys(fields).filter(k => !fields[k]);
+    const semuaKosong = Object.values(fields).every(v => !v);
 
-    if (kosong.length) {
+    if (kosong.length && !semuaKosong) {
       const user = msg.from.username ? '@' + msg.from.username : msg.from.first_name;
+
       await bot.sendMessage(
         chatId,
         `⚠️ ${user} data belum lengkap (${kosong.join(', ')}) silahkan dilengkapi.`
@@ -291,7 +302,7 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
     }
 
     const text = `
-📡 INTERNET : ${row[3] || '-'}
+🌐 INTERNET : ${row[3] || '-'}
 📞 CP : ${row[4] || '-'}
 📍 ALAMAT : ${row[7] || '-'}
 📡 ODP : ${row[8] || '-'}
@@ -304,4 +315,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL STABLE - PARSER + REMINDER OK');
+console.log('🚀 FINAL STABLE - ALL FIXED');
