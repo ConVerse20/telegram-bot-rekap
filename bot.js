@@ -129,15 +129,24 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 🧠 EXTRACT MCU ONLY (FIX)
+// 🔥 FIX: AMBIL MCU SAJA (TAMBAHAN)
 // =======================
 function extractMCU(text) {
-  const match = text.match(/MEDICAL CHECK UP PELANGGAN[\s\S]*?PETUGAS\s*:\s*[^\n]*/i);
-  return match ? match[0] : '';
+  const start = text.search(/MEDICAL CHECK UP PELANGGAN/i);
+  if (start === -1) return '';
+
+  const sub = text.slice(start);
+
+  const endMatch = sub.match(/PETUGAS\s*:[^\n]*/i);
+  if (!endMatch) return '';
+
+  const endIndex = sub.indexOf(endMatch[0]) + endMatch[0].length;
+
+  return sub.slice(0, endIndex);
 }
 
 // =======================
-// 🧠 VALIDASI FULL FIELD
+// 🧠 VALIDASI
 // =======================
 function getEmptyFields(data) {
   const fields = {
@@ -156,23 +165,18 @@ function getEmptyFields(data) {
     .filter(([_, v]) => !v || v.toString().trim() === '')
     .map(([k]) => k);
 
-  if (kosong.length === Object.keys(fields).length) {
-    return [];
-  }
+  if (kosong.length === Object.keys(fields).length) return [];
 
   return kosong;
 }
 
-// =======================
-// 🧠 USER TAG
-// =======================
 function getUserTag(msg) {
   if (msg.from.username) return `@${msg.from.username}`;
   return msg.from.first_name || 'User';
 }
 
 // =======================
-// 💾 GOOGLE SHEET
+// 💾 GOOGLE SHEET (ASLI)
 // =======================
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
@@ -276,6 +280,7 @@ async function handleMsg(msg) {
 
     const chatId = msg.chat.id;
 
+    // sharelok tetap jalan
     const locNow = getLocation(msg);
     if (locNow && lastInet[chatId]) {
       await saveData({ inet: lastInet[chatId] }, locNow);
@@ -294,40 +299,23 @@ async function handleMsg(msg) {
 
     bufferMsg[chatId] = [];
 
-    // =======================
-    // 🔥 AMBIL HANYA MCU
-    // =======================
+    // 🔥 FIX MCU ONLY
     const mcuText = extractMCU(combined);
     if (!mcuText) return;
 
     const data = parseMCU(mcuText);
-    const emptyFields = getEmptyFields(data);
-    const userTag = getUserTag(msg);
 
-    // =======================
-    // 🚫 STOP JIKA SEMUA KOSONG
-    // =======================
-    const allFields = [
-      data.status,
-      data.tiket,
-      data.inet,
-      data.cp,
-      data.penyebab,
-      data.perbaikan,
-      data.alamat,
-      data.odp,
-      data.petugas
-    ];
-
+    // 🔥 STOP JIKA SEMUA KOSONG
+    const allFields = Object.values(data);
     const isAllEmpty = allFields.every(v => !v || v.toString().trim() === '');
     if (isAllEmpty) return;
 
-    if (data.inet) {
-      lastInet[chatId] = data.inet;
-    }
+    const emptyFields = getEmptyFields(data);
+    const userTag = getUserTag(msg);
+
+    if (data.inet) lastInet[chatId] = data.inet;
 
     const shareloc = lastLocation[chatId] || '';
-
     const res = await saveData(data, shareloc);
 
     if (res.type === 'insert') {
@@ -340,9 +328,6 @@ async function handleMsg(msg) {
       await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
     }
 
-    // =======================
-    // 🚨 REMINDER FIELD KOSONG
-    // =======================
     if (emptyFields.length > 0 && !msg.edit_date) {
       await bot.sendMessage(
         chatId,
@@ -367,7 +352,7 @@ Field kosong:
 }
 
 // =======================
-// 🔎 /CEK FINAL
+// 🔎 /CEK FINAL (TETAP ADA)
 // =======================
 bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   try {
@@ -412,4 +397,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL STABLE MAX (ANTI CHAT PANJANG + SMART MCU)');
+console.log('🚀 FINAL FIX TANPA MERUBAH FLOW');
