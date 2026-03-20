@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL (LOCK - DATA DULU BARU SHARELOK)
+// 🚀 MCU BOT FINAL (LOCK - NO CHANGE FLOW)
 // =======================
 
 const { google } = require('googleapis');
@@ -45,7 +45,7 @@ function clean(v) {
 }
 
 // =======================
-// 📱 CP (ASLI)
+// 📱 CP NORMAL (ASLI)
 // =======================
 function normalizeCP(cp) {
   if (!cp) return '';
@@ -59,7 +59,7 @@ function normalizeCP(cp) {
 }
 
 // =======================
-// 📍 SHARELOK (FIX SUPPORT LINK)
+// 📍 SHARELOK
 // =======================
 function getLocation(msg) {
   if (msg.location)
@@ -87,6 +87,7 @@ function getLocation(msg) {
 // =======================
 const bufferMsg = {};
 const lastLocation = {};
+const lastInet = {};
 
 function addBuffer(chatId, msg) {
   if (!bufferMsg[chatId]) bufferMsg[chatId] = [];
@@ -100,11 +101,7 @@ function get(label, txt) {
   const r = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
   const m = txt.match(r);
   if (!m) return '';
-
-  let val = m[1];
-  val = val.split(/STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS/i)[0];
-
-  return val.trim();
+  return m[1].trim();
 }
 
 function parseMCU(txt) {
@@ -214,6 +211,13 @@ async function handleMsg(msg) {
 
     const chatId = msg.chat.id;
 
+    // 🔥 AUTO SAVE SHARELOK (FIX JEDA CHAT)
+    const locNow = getLocation(msg);
+    if (locNow && lastInet[chatId]) {
+      await saveData({ inet: lastInet[chatId] }, locNow);
+      await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+    }
+
     const loc = getLocation(msg);
     if (loc) lastLocation[chatId] = loc;
 
@@ -231,18 +235,18 @@ async function handleMsg(msg) {
     const data = parseMCU(combined);
     if (!data.inet) return;
 
+    lastInet[chatId] = data.inet;
+
     const shareloc = lastLocation[chatId] || '';
 
     const res = await saveData(data, shareloc);
 
-    // ✅ DATA DULU
     if (res.type === 'insert') {
       await bot.sendMessage(chatId, '🆕 Data Baru sudah Dicatet ke Google Sheet ✅');
     } else {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
     }
 
-    // ✅ BARU SHARELOK
     if (res.shareChanged) {
       await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
     }
@@ -253,7 +257,7 @@ async function handleMsg(msg) {
 }
 
 // =======================
-// 🔎 /CEK (FINAL SIMPLE)
+// 🔎 /CEK FINAL
 // =======================
 bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   try {
@@ -277,7 +281,6 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
 
     const loc = row[10] || '';
 
-    // map dulu
     if (loc) {
       const [lat, lon] = loc.split(',');
       if (lat && lon) {
@@ -299,4 +302,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL STABLE');
+console.log('🚀 FINAL STABLE (NO CHANGE FLOW)');
