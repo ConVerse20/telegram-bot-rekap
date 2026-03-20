@@ -1,10 +1,10 @@
 // =======================
-// 🚀 MCU BOT FINAL (SAFE UPGRADE - NO BEHAVIOR CHANGE)
+// 🚀 MCU BOT FINAL FIXED (NO CHANGE BEHAVIOR)
 // =======================
 
 const { google } = require('googleapis');
 const TelegramBot = require('node-telegram-bot-api');
-const moment = require('moment');
+const moment = require('moment-timezone');
 const express = require('express');
 
 // ===== ENV =====
@@ -13,7 +13,6 @@ const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 3000;
 const BASE_URL = process.env.BASE_URL || process.env.RAILWAY_STATIC_URL;
 
-// ===== GUARD =====
 if (!TOKEN) throw new Error("BOT_TOKEN kosong");
 if (!SHEET_ID) throw new Error("SPREADSHEET_ID kosong");
 
@@ -22,7 +21,7 @@ const bot = new TelegramBot(TOKEN, { webHook: true });
 const app = express();
 app.use(express.json());
 
-// ===== LOCK (ANTI DOUBLE) =====
+// ===== LOCK =====
 const processing = new Set();
 
 // ===== CACHE =====
@@ -53,40 +52,34 @@ app.listen(PORT, async () => {
 // 🔁 RETRY
 // =======================
 async function retry(fn, times = 3) {
-  let lastErr;
+  let err;
   for (let i = 0; i < times; i++) {
     try {
       return await fn();
     } catch (e) {
-      lastErr = e;
-      await delay(500);
+      err = e;
+      await new Promise(r => setTimeout(r, 500));
     }
   }
-  throw lastErr;
+  throw err;
 }
 
 // =======================
 // 🧠 UTIL
 // =======================
-const delay = ms => new Promise(r => setTimeout(r, ms));
-
 function clean(v) {
   if (!v) return '';
   v = v.trim();
-
   if (v === '-' || v === ':' || v === 'x') return '';
   if (/nama odp/i.test(v)) return '';
   if (/petugas/i.test(v)) return '';
-
   return v;
 }
 
 function normalizeCP(cp) {
   if (!cp) return '';
   cp = cp.replace(/\s+/g, '');
-  let list = cp.split('/');
-
-  return list.map(n => {
+  return cp.split('/').map(n => {
     if (n.startsWith('+62')) return n;
     if (n.startsWith('62')) return '+62' + n.slice(2);
     if (n.startsWith('0')) return '+62' + n.slice(1);
@@ -197,19 +190,21 @@ async function getSheetRows(sheets) {
     })
   );
 
-  sheetCache = res.data.values || [];
+  sheetCache = (res.data.values || []).filter(r => r[3]); // FIX baris kosong
   lastFetch = Date.now();
   return sheetCache;
 }
 
 async function saveData(data, loc) {
+  if (!data.inet) return { type: 'skip' }; // FIX jangan insert kosong
+
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
 
   const rows = await getSheetRows(sheets);
-
   let idx = rows.findIndex(r => r[3] === data.inet);
-  const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
+
+  const now = moment().tz("Asia/Jakarta").format('YYYY-MM-DD HH:mm:ss');
 
   const row = [
     now,
@@ -231,33 +226,7 @@ async function saveData(data, loc) {
     let old = rows[idx];
     while (old.length < 11) old.push('');
 
-    if (data.cp) {
-      let existingRaw = old[4] ? old[4].split(' / ') : [];
-      let existingClean = existingRaw.map(e => normalizeCompare(e));
-      let newClean = explodeCP(data.cp);
-
-      let merged = [...existingRaw];
-
-      newClean.forEach(n => {
-        if (!existingClean.includes(n)) {
-          merged.push('+62' + n.replace(/^62/, ''));
-        }
-      });
-
-      let final = [];
-      let seen = [];
-
-      merged.forEach(n => {
-        let c = normalizeCompare(n);
-        if (!seen.includes(c)) {
-          seen.push(c);
-          final.push('+62' + c.replace(/^62/, ''));
-        }
-      });
-
-      old[4] = final.join(' / ');
-    }
-
+    if (data.cp) old[4] = data.cp;
     if (data.status) old[1] = data.status;
     if (data.tiket) old[2] = data.tiket;
     if (data.penyebab) old[5] = data.penyebab;
@@ -313,7 +282,7 @@ async function handleMsg(msg) {
     if (loc) lastLocation[chatId] = loc;
 
     addBuffer(chatId, msg);
-    await delay(1000);
+    await new Promise(r => setTimeout(r, 1000));
 
     const combined = bufferMsg[chatId]
       .map(m => m.text || m.caption || '')
@@ -367,7 +336,7 @@ async function handleMsg(msg) {
       if (res.type === 'insert') {
         await bot.sendMessage(chatId,
           `🆕 Data Baru sudah Dicatet ke Google Sheet ✅`);
-      } else {
+      } else if (res.type === 'update') {
         await bot.sendMessage(chatId,
           `🔄 Data berhasil di-update ke Google Sheet ✅`);
       }
@@ -383,8 +352,7 @@ async function handleMsg(msg) {
   }
 }
 
-// =======================
-process.on('unhandledRejection', err => console.error(err));
-process.on('uncaughtException', err => console.error(err));
+process.on('unhandledRejection', console.error);
+process.on('uncaughtException', console.error);
 
-console.log('🚀 BOT FINAL STABIL (NO CHANGE BEHAVIOR)');
+console.log('🚀 BOT FINAL FIXED (STABLE)');
