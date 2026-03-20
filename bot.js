@@ -141,17 +141,22 @@ function parseMCU(txt) {
 // =======================
 function getEmptyFields(data) {
   const fields = {
+    STATUS: data.status,
+    'NO TIKET': data.tiket,
     INET: data.inet,
     CP: data.cp,
+    PENYEBAB: data.penyebab,
+    PERBAIKAN: data.perbaikan,
     ALAMAT: data.alamat,
     'NAMA ODP': data.odp,
+    PETUGAS: data.petugas,
   };
 
   const kosong = Object.entries(fields)
     .filter(([_, v]) => !v || v.toString().trim() === '')
     .map(([k]) => k);
 
-  // semua kosong → tidak reminder
+  // 🚫 kalau semua kosong → tidak kirim reminder
   if (kosong.length === Object.keys(fields).length) {
     return [];
   }
