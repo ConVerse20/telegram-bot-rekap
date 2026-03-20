@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL ALL-IN-ONE (LOCK FINAL)
+// 🚀 MCU BOT FINAL (PATCH MINIMAL - TIDAK UBAH FITUR)
 // =======================
 
 const { google } = require('googleapis');
@@ -25,27 +25,32 @@ app.post('/webhook', (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  try {
-    const webhookUrl = `${BASE_URL}/webhook`;
-    await bot.deleteWebHook();
-    await bot.setWebHook(webhookUrl);
-  } catch (e) {}
+  const webhookUrl = `${BASE_URL}/webhook`;
+  await bot.deleteWebHook();
+  await bot.setWebHook(webhookUrl);
 });
 
 // =======================
-// 🧠 UTIL (ASLI)
+// 🧠 UTIL (PATCH)
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 function clean(v) {
   if (!v) return '';
+
   v = v.trim();
-  if (v === '-' || v === ':' || v === 'x') return '';
+
+  // ❗ FIX: buang label nyangkut
+  if (/^(STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS)/i.test(v))
+    return '';
+
+  if (v === '-' || v === ':' || v === '') return '';
+
   return v;
 }
 
 // =======================
-// 📱 CP (ASLI JANGAN DIUBAH)
+// 📱 CP (ASLI)
 // =======================
 function normalizeCP(cp) {
   if (!cp) return '';
@@ -57,15 +62,6 @@ function normalizeCP(cp) {
     if (n.startsWith('0')) return '+62' + n.slice(1);
     return n;
   }).join(' / ');
-}
-
-function normalizeCompare(cp) {
-  return cp.replace(/\D/g, '').replace(/^0/, '62');
-}
-
-function explodeCP(cp) {
-  if (!cp) return [];
-  return cp.split('/').map(n => normalizeCompare(n));
 }
 
 // =======================
@@ -98,12 +94,19 @@ function addBuffer(chatId, msg) {
 }
 
 // =======================
-// 🧠 PARSER (FIX MINIMAL)
+// 🧠 PARSER (FIX UTAMA)
 // =======================
 function get(label, txt) {
   const r = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
   const m = txt.match(r);
-  return m ? m[1].replace(/^-/, '').trim() : '';
+  if (!m) return '';
+
+  let val = m[1];
+
+  // ❗ STOP kalau kena label berikutnya
+  val = val.split(/STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS/i)[0];
+
+  return val.trim();
 }
 
 function parseMCU(txt) {
@@ -121,7 +124,7 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 💾 GOOGLE SHEET (FIX RAPI TANPA UBAH STRUKTUR)
+// 💾 GOOGLE SHEET (ASLI - LOCK)
 // =======================
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
@@ -165,10 +168,8 @@ async function saveData(data, loc) {
     let old = rows[idx];
     while (old.length < 11) old.push('');
 
-    // ❗ FIX: jangan geser kolom
     old[1] = data.status || old[1];
     old[2] = data.tiket || old[2];
-    old[3] = data.inet || old[3];
     old[4] = data.cp || old[4];
     old[5] = data.penyebab || old[5];
     old[6] = data.perbaikan || old[6];
@@ -199,7 +200,7 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// 🚀 MAIN (ASLI + FIX REMINDER)
+// 🚀 MAIN (FIX REMINDER)
 // =======================
 bot.on('message', handleMsg);
 bot.on('edited_message', handleMsg);
@@ -228,16 +229,14 @@ async function handleMsg(msg) {
 
     const shareloc = lastLocation[chatId] || '';
 
-    // 🔥 FIX REMINDER SESUAI /CEK
+    // 🔥 FIX REMINDER FINAL
     const kosong = [];
-
     if (!data.inet) kosong.push("INET");
     if (!data.cp) kosong.push("CP");
     if (!data.alamat) kosong.push("ALAMAT");
     if (!data.odp) kosong.push("ODP");
 
-    const semuaKosong =
-      !data.inet && !data.cp && !data.alamat && !data.odp;
+    const semuaKosong = kosong.length === 4;
 
     if (kosong.length && !semuaKosong) {
       const user = msg.from.username
@@ -263,4 +262,4 @@ async function handleMsg(msg) {
   }
 }
 
-console.log('🚀 BOT FINAL LOCK (FITUR UTUH)');
+console.log('🚀 PATCH FINAL TANPA UBAH FITUR');
