@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL ALL-IN-ONE (WEBHOOK SAFE + FIX GSHEET RAPI)
+// 🚀 MCU BOT FINAL ALL-IN-ONE (WEBHOOK SAFE - LOCK FINAL)
 // =======================
 
 const { google } = require('googleapis');
@@ -40,16 +40,12 @@ app.listen(PORT, async () => {
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
-// 🔥 FIX CLEAN (tidak ubah logic, hanya bersihin prefix)
 function clean(v) {
   if (!v) return '';
-
   v = v.trim();
 
-  // hapus "- " di depan
+  // hapus "- " di depan & "LABEL :"
   v = v.replace(/^-\s*/g, '');
-
-  // hapus "LABEL :"
   v = v.replace(/^[A-Z\s\/]+:\s*/i, '');
 
   if (v === '-' || v === ':' || v === 'x') return '';
@@ -60,7 +56,7 @@ function clean(v) {
 }
 
 // =======================
-// 📱 CP (ASLI)
+// 📱 CP (ASLI +62)
 // =======================
 function normalizeCP(cp) {
   if (!cp) return '';
@@ -129,9 +125,8 @@ function splitMCU(text) {
   });
 }
 
-// 🔥 FIX GET (biar label tidak ikut)
 function get(label, txt) {
-  const r = new RegExp(`${label}\\s*:\\s*([^\\n-]*)`, 'i');
+  const r = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
   const m = txt.match(r);
   return m ? m[1].trim() : '';
 }
@@ -155,7 +150,7 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 💾 GOOGLE SHEET
+// 💾 GOOGLE SHEET (RAPI 11 KOLOM)
 // =======================
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
@@ -187,6 +182,7 @@ async function saveData(data, loc) {
     let old = rows[idx];
     while (old.length < 11) old.push('');
 
+    // merge CP (hindari duplikat 0 vs 62)
     if (data.cp) {
       let existingRaw = old[4] ? old[4].split(' / ') : [];
       let existingClean = existingRaw.map(e => normalizeCompare(e));
@@ -214,7 +210,6 @@ async function saveData(data, loc) {
       shareChanged = true;
     }
 
-    // 🔥 FIX ANTI GESER
     const fixedRow = [
       old[0] || now,
       old[1] || '',
@@ -232,7 +227,7 @@ async function saveData(data, loc) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
       range: `DATA!A${idx + 1}:K${idx + 1}`,
-      valueInputOption: 'USER_ENTERED',
+      valueInputOption: 'RAW',
       resource: { values: [fixedRow] }
     });
 
@@ -250,13 +245,13 @@ async function saveData(data, loc) {
     data.alamat || '',
     data.odp || '',
     data.petugas || '',
-    loc || '',
+    loc || ''
   ];
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
     range: 'DATA!A:K',
-    valueInputOption: 'USER_ENTERED',
+    valueInputOption: 'RAW',
     resource: { values: [newRow] }
   });
 
@@ -264,7 +259,47 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// 🚀 MAIN (TIDAK DIUBAH)
+// 🔍 /CEK (SESUAI KAMU + MAP)
+// =======================
+bot.onText(/\/cek (.+)/, async (msg, match) => {
+  try {
+    const chatId = msg.chat.id;
+    const inet = match[1].trim();
+
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: 'v4', auth: client });
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: 'DATA!A:K',
+    });
+
+    const rows = res.data.values || [];
+    const row = rows.find(r => r[3] === inet);
+
+    if (!row) {
+      return bot.sendMessage(chatId, '❌ data tidak ditemukan');
+    }
+
+    const loc = row[10] || '';
+    const [lat, lon] = loc.split(',');
+
+    if (lat && lon) {
+      await bot.sendLocation(chatId, parseFloat(lat), parseFloat(lon));
+    }
+
+    await bot.sendMessage(chatId,
+`📡 INTERNET : ${row[3] || ''}
+📞 CP : ${row[4] || ''}
+📍 ALAMAT : ${row[7] || ''}
+📡 ODP : ${row[8] || ''}`);
+  } catch (err) {
+    console.log(err);
+  }
+});
+
+// =======================
+// 🚀 MAIN (ASLI)
 // =======================
 bot.on('message', handleMsg);
 bot.on('edited_message', handleMsg);
@@ -299,25 +334,28 @@ async function handleMsg(msg) {
 
       const shareloc = lastLocation[chatId] || '';
 
-      const fields = {
-        "INET/TLP": data.inet,
-        "CP PELANGGAN": data.cp,
-        "ALAMAT LENGKAP": data.alamat,
-        "NAMA ODP": data.odp,
-        "PETUGAS": data.petugas
-      };
+      // ===== REMINDER SESUAI /CEK =====
+      const fieldsKosong = [];
 
-      const kosong = Object.keys(fields).filter(k => !fields[k]);
-      const semuaKosong = Object.values(fields).every(v => !v);
+      if (!data.inet) fieldsKosong.push("INET/TLP");
+      if (!data.cp) fieldsKosong.push("CP PELANGGAN");
+      if (!data.alamat) fieldsKosong.push("ALAMAT LENGKAP");
+      if (!data.odp) fieldsKosong.push("NAMA ODP");
 
-      if (kosong.length && !semuaKosong) {
+      const semuaKosong =
+        !data.inet &&
+        !data.cp &&
+        !data.alamat &&
+        !data.odp;
+
+      if (fieldsKosong.length > 0 && !semuaKosong) {
         const user = msg.from.username
           ? '@' + msg.from.username
           : msg.from.first_name;
 
         await bot.sendMessage(
           chatId,
-          `⚠️ ${user} data belum lengkap (${kosong.join(', ')}) silahkan dilengkapi.`
+          `⚠️ ${user} data belum lengkap (${fieldsKosong.join(', ')}) silahkan dilengkapi.`
         );
       }
 
@@ -342,4 +380,4 @@ async function handleMsg(msg) {
   }
 }
 
-console.log('🚀 BOT FINAL FIX GSHEET RAPI (FITUR UTUH)');
+console.log('🚀 BOT FINAL LOCK (FITUR UTUH, GSHEET RAPI)');
