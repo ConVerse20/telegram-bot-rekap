@@ -37,10 +37,20 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 
 function clean(v) {
   if (!v) return '';
+
   v = v.trim();
+
+  // 🔥 FIX: buang karakter sampah
+  v = v.replace(/^[:\-\s]+/, '').trim();
+
   if (/^(STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS)/i.test(v))
     return '';
+
   if (v === '-' || v === ':' || v === '') return '';
+
+  // 🔥 tambahan anti ":" doang
+  if (/^[:\-]+$/.test(v)) return '';
+
   return v;
 }
 
@@ -101,7 +111,15 @@ function get(label, txt) {
   const r = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
   const m = txt.match(r);
   if (!m) return '';
-  return m[1].trim();
+
+  let val = m[1].trim();
+
+  // 🔥 FIX UTAMA: bersihin ":" / "-" / spasi
+  val = val.replace(/^[:\-\s]+/, '').trim();
+
+  if (val === '') return '';
+
+  return val;
 }
 
 function parseMCU(txt) {
@@ -119,7 +137,7 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 🧠 VALIDASI FIELD KOSONG (FIX FINAL)
+// 🧠 VALIDASI FIELD KOSONG
 // =======================
 function getEmptyFields(data) {
   const fields = {
@@ -133,7 +151,7 @@ function getEmptyFields(data) {
     .filter(([_, v]) => !v || v.toString().trim() === '')
     .map(([k]) => k);
 
-  // 🚫 semua kosong → tidak reminder
+  // semua kosong → tidak reminder
   if (kosong.length === Object.keys(fields).length) {
     return [];
   }
@@ -369,4 +387,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL STABLE + PERFECT VALIDATION');
+console.log('🚀 FINAL STABLE + PARSER FIX + VALIDATION PERFECT');
