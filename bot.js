@@ -40,7 +40,6 @@ function clean(v) {
 
   v = v.trim();
 
-  // 🔥 FIX: buang karakter sampah
   v = v.replace(/^[:\-\s]+/, '').trim();
 
   if (/^(STATUS|NO TIKET|INET|CP|PENYEBAB|LANGKAH|ALAMAT|NAMA ODP|PETUGAS)/i.test(v))
@@ -48,14 +47,13 @@ function clean(v) {
 
   if (v === '-' || v === ':' || v === '') return '';
 
-  // 🔥 tambahan anti ":" doang
   if (/^[:\-]+$/.test(v)) return '';
 
   return v;
 }
 
 // =======================
-// 📱 CP NORMAL (ASLI)
+// 📱 CP NORMAL
 // =======================
 function normalizeCP(cp) {
   if (!cp) return '';
@@ -113,8 +111,6 @@ function get(label, txt) {
   if (!m) return '';
 
   let val = m[1].trim();
-
-  // 🔥 FIX UTAMA: bersihin ":" / "-" / spasi
   val = val.replace(/^[:\-\s]+/, '').trim();
 
   if (val === '') return '';
@@ -137,7 +133,7 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 🧠 VALIDASI FIELD KOSONG
+// 🧠 VALIDASI FULL FIELD
 // =======================
 function getEmptyFields(data) {
   const fields = {
@@ -156,7 +152,6 @@ function getEmptyFields(data) {
     .filter(([_, v]) => !v || v.toString().trim() === '')
     .map(([k]) => k);
 
-  // 🚫 kalau semua kosong → tidak kirim reminder
   if (kosong.length === Object.keys(fields).length) {
     return [];
   }
@@ -302,6 +297,25 @@ async function handleMsg(msg) {
     const emptyFields = getEmptyFields(data);
     const userTag = getUserTag(msg);
 
+    // =======================
+    // 🚫 STOP JIKA SEMUA KOSONG
+    // =======================
+    const allFields = [
+      data.status,
+      data.tiket,
+      data.inet,
+      data.cp,
+      data.penyebab,
+      data.perbaikan,
+      data.alamat,
+      data.odp,
+      data.petugas
+    ];
+
+    const isAllEmpty = allFields.every(v => !v || v.toString().trim() === '');
+
+    if (isAllEmpty) return;
+
     if (data.inet) {
       lastInet[chatId] = data.inet;
     }
@@ -392,4 +406,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL STABLE + PARSER FIX + VALIDATION PERFECT');
+console.log('🚀 FINAL STABLE ULTRA (ALL FIELD VALIDATION + SMART STOP)');
