@@ -109,9 +109,6 @@ function getLocation(msg) {
 // 📦 BUFFER
 // =======================
 const bufferMsg = {};
-const lastLocation = {};
-const lastInet = {};
-
 const lastUserInet = {};
 const lastUserLoc = {};
 
@@ -154,53 +151,6 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 🔥 MCU ONLY
-// =======================
-function extractMCU(text) {
-  const start = text.search(/MEDICAL CHECK UP PELANGGAN/i);
-  if (start === -1) return '';
-
-  const sub = text.slice(start);
-
-  const endMatch = sub.match(/PETUGAS\s*:[^\n]*/i);
-  if (!endMatch) return '';
-
-  const endIndex = sub.indexOf(endMatch[0]) + endMatch[0].length;
-
-  return sub.slice(0, endIndex);
-}
-
-// =======================
-// 🧠 VALIDASI
-// =======================
-function getEmptyFields(data) {
-  const fields = {
-    STATUS: data.status,
-    'NO TIKET': data.tiket,
-    INET: data.inet,
-    CP: data.cp,
-    PENYEBAB: data.penyebab,
-    PERBAIKAN: data.perbaikan,
-    ALAMAT: data.alamat,
-    'NAMA ODP': data.odp,
-    PETUGAS: data.petugas,
-  };
-
-  const kosong = Object.entries(fields)
-    .filter(([_, v]) => !v || v.toString().trim() === '')
-    .map(([k]) => k);
-
-  if (kosong.length === Object.keys(fields).length) return [];
-
-  return kosong;
-}
-
-function getUserTag(msg) {
-  if (msg.from.username) return `@${msg.from.username}`;
-  return msg.from.first_name || 'User';
-}
-
-// =======================
 // 💾 GOOGLE SHEET
 // =======================
 const creds = JSON.parse(
@@ -213,7 +163,7 @@ const auth = new google.auth.GoogleAuth({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-async function saveData(data, loc) {
+async function saveData(data, loc, isEdit = false) {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
 
@@ -231,37 +181,39 @@ async function saveData(data, loc) {
 
   const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
 
-  // SHARELOK ONLY
-  if (!data.tiket && data.inet && loc) {
-    let idx = -1;
-
+  // 🔥 EDIT MODE → UPDATE (INET + TIKET)
+  if (isEdit && data.inet && data.tiket) {
     for (let i = normalizedRows.length - 1; i >= 0; i--) {
-      if ((normalizedRows[i][3] || '').trim() === data.inet.trim()) {
-        idx = i;
-        break;
-      }
-    }
+      if (
+        (normalizedRows[i][3] || '').trim() === data.inet &&
+        (normalizedRows[i][2] || '').trim() === data.tiket
+      ) {
+        let old = normalizedRows[i];
 
-    if (idx !== -1) {
-      let old = normalizedRows[idx];
+        old[0] = now;
+        old[1] = data.status || old[1];
+        old[4] = mergeCP(old[4], data.cp);
+        old[5] = data.penyebab || old[5];
+        old[6] = data.perbaikan || old[6];
+        old[7] = data.alamat || old[7];
+        old[8] = data.odp || old[8];
+        old[9] = data.petugas || old[9];
 
-      if (loc !== old[10]) {
-        old[10] = loc;
+        if (loc) old[10] = loc;
 
         await sheets.spreadsheets.values.update({
           spreadsheetId: SHEET_ID,
-          range: `DATA!A${idx + 1}:K${idx + 1}`,
+          range: `DATA!A${i + 1}:K${i + 1}`,
           valueInputOption: 'RAW',
           resource: { values: [old] }
         });
 
-        return { type: 'update', shareChanged: true };
+        return { type: 'update', shareChanged: !!loc };
       }
     }
-
-    return { type: 'update', shareChanged: false };
   }
 
+  // 🔥 AMBIL CP LAMA
   let oldCP = '';
   for (let i = normalizedRows.length - 1; i >= 0; i--) {
     if ((normalizedRows[i][3] || '').trim() === (data.inet || '').trim()) {
@@ -306,6 +258,7 @@ async function handleMsg(msg) {
 
     const chatId = msg.chat.id;
     const username = getUsername(msg);
+    const isEdit = !!msg.edit_date;
 
     const locNow = getLocation(msg);
 
@@ -348,9 +301,9 @@ async function handleMsg(msg) {
 
     const shareloc = lastUserLoc[username] || undefined;
 
-    const res = await saveData(data, shareloc);
+    const res = await saveData(data, shareloc, isEdit);
 
-    // 🔥 RESET SHARELOK SETELAH MCU MASUK
+    // reset sharelok setelah MCU
     lastUserLoc[username] = undefined;
 
     if (res.type === 'insert') {
@@ -432,4 +385,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL SHARELOK FIX PERFECT');
+console.log('🚀 FINAL PERFECT (EDIT MCU + SHARELOK + CP MERGE)');
