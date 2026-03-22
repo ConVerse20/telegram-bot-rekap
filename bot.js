@@ -12,7 +12,7 @@ const TOKEN = process.env.BOT_TOKEN;
 const SHEET_ID = process.env.SPREADSHEET_ID;
 const PORT = process.env.PORT || 3000;
 const BASE_URL = process.env.BASE_URL || process.env.RAILWAY_STATIC_URL;
-const REPORT_CHAT_ID = process.env.REPORT_CHAT_ID; // 🔥 TAMBAHAN
+const REPORT_CHAT_ID = process.env.REPORT_CHAT_ID;
 
 // ===== INIT =====
 const bot = new TelegramBot(TOKEN, { webHook: true });
@@ -112,7 +112,6 @@ const bufferMsg = {};
 const lastLocation = {};
 const lastInet = {};
 
-// 🔥 USER BASED FIX
 const lastUserInet = {};
 const lastUserLoc = {};
 
@@ -232,7 +231,7 @@ async function saveData(data, loc) {
 
   const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
 
-  // 🔥 SHARELOK ONLY
+  // SHARELOK ONLY
   if (!data.tiket && data.inet && loc) {
     let idx = -1;
 
@@ -263,7 +262,6 @@ async function saveData(data, loc) {
     return { type: 'update', shareChanged: false };
   }
 
-  // 🔥 AMBIL CP LAMA
   let oldCP = '';
   for (let i = normalizedRows.length - 1; i >= 0; i--) {
     if ((normalizedRows[i][3] || '').trim() === (data.inet || '').trim()) {
@@ -297,68 +295,6 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// 📊 REPORT JAM 20:00
-// =======================
-async function sendDailyReport() {
-  try {
-    if (!REPORT_CHAT_ID) return;
-
-    const client = await auth.getClient();
-    const sheets = google.sheets({ version: 'v4', auth: client });
-
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: 'DATA!A:K',
-    });
-
-    const rows = res.data.values || [];
-    const today = moment().utcOffset(7).format('YYYY-MM-DD');
-
-    const todayRows = rows.filter(r => (r[0] || '').startsWith(today));
-
-    if (todayRows.length === 0) {
-      return bot.sendMessage(REPORT_CHAT_ID, '📊 Laporan hari ini kosong');
-    }
-
-    const total = todayRows.length;
-
-    const statusCount = {};
-    todayRows.forEach(r => {
-      const s = (r[1] || '-').toLowerCase();
-      statusCount[s] = (statusCount[s] || 0) + 1;
-    });
-
-    let statusText = '';
-    for (let k in statusCount) {
-      statusText += `- ${k.toUpperCase()} : ${statusCount[k]}\n`;
-    }
-
-    const text = `
-📊 LAPORAN HARIAN MCU
-📅 ${today}
-
-TOTAL DATA : ${total}
-
-STATUS:
-${statusText}
-`;
-
-    await bot.sendMessage(REPORT_CHAT_ID, text.trim());
-
-  } catch (err) {
-    console.log('REPORT ERROR:', err);
-  }
-}
-
-// 🔥 SCHEDULER
-setInterval(() => {
-  const now = moment().utcOffset(7);
-  if (now.format('HH:mm') === '20:00') {
-    sendDailyReport();
-  }
-}, 60000);
-
-// =======================
 // 🚀 MAIN
 // =======================
 bot.on('message', handleMsg);
@@ -384,9 +320,6 @@ async function handleMsg(msg) {
       await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
       return;
     }
-
-    const loc = getLocation(msg);
-    if (loc) lastLocation[chatId] = loc;
 
     addBuffer(chatId, msg);
     await delay(1000);
@@ -416,6 +349,9 @@ async function handleMsg(msg) {
     const shareloc = lastUserLoc[username] || undefined;
 
     const res = await saveData(data, shareloc);
+
+    // 🔥 RESET SHARELOK SETELAH MCU MASUK
+    lastUserLoc[username] = undefined;
 
     if (res.type === 'insert') {
       await bot.sendMessage(chatId, '🆕 Data Baru sudah Dicatet ke Google Sheet ✅');
@@ -496,4 +432,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL + REPORT JAM 20:00 AKTIF');
+console.log('🚀 FINAL SHARELOK FIX PERFECT');
