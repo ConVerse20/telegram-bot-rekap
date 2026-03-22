@@ -64,6 +64,23 @@ function normalizeCP(cp) {
 }
 
 // =======================
+// 🔥 MERGE CP (TAMBAHAN)
+// =======================
+function mergeCP(oldCP, newCP) {
+  const set = new Set();
+
+  function splitCP(cp) {
+    if (!cp) return [];
+    return cp.split('/').map(x => x.trim()).filter(Boolean);
+  }
+
+  splitCP(oldCP).forEach(v => set.add(v));
+  splitCP(newCP).forEach(v => set.add(v));
+
+  return normalizeCP(Array.from(set).join('/'));
+}
+
+// =======================
 // 📍 SHARELOK
 // =======================
 function getLocation(msg) {
@@ -94,7 +111,7 @@ const bufferMsg = {};
 const lastLocation = {};
 const lastInet = {};
 
-// 🔥 TAMBAHAN FIX
+// 🔥 FIX USER BASED
 const lastUserInet = {};
 const lastUserLoc = {};
 
@@ -137,7 +154,7 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 🔥 FIX: AMBIL MCU SAJA
+// 🔥 MCU ONLY
 // =======================
 function extractMCU(text) {
   const start = text.search(/MEDICAL CHECK UP PELANGGAN/i);
@@ -212,22 +229,54 @@ async function saveData(data, loc) {
     return r;
   });
 
-  let idx = -1;
+  const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
+
+  // 🔥 SHARELOK ONLY UPDATE
+  if (!data.tiket && data.inet && loc) {
+    let idx = -1;
+
+    for (let i = normalizedRows.length - 1; i >= 0; i--) {
+      if ((normalizedRows[i][3] || '').trim() === data.inet.trim()) {
+        idx = i;
+        break;
+      }
+    }
+
+    if (idx !== -1) {
+      let old = normalizedRows[idx];
+
+      if (loc !== old[10]) {
+        old[10] = loc;
+
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SHEET_ID,
+          range: `DATA!A${idx + 1}:K${idx + 1}`,
+          valueInputOption: 'RAW',
+          resource: { values: [old] }
+        });
+
+        return { type: 'update', shareChanged: true };
+      }
+    }
+
+    return { type: 'update', shareChanged: false };
+  }
+
+  // 🔥 AMBIL CP LAMA
+  let oldCP = '';
   for (let i = normalizedRows.length - 1; i >= 0; i--) {
     if ((normalizedRows[i][3] || '').trim() === (data.inet || '').trim()) {
-      idx = i;
+      oldCP = normalizedRows[i][4] || '';
       break;
     }
   }
-
-  const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
 
   const row = [
     now,
     data.status || '',
     data.tiket || '',
     data.inet || '',
-    data.cp || '',
+    mergeCP(oldCP, data.cp),
     data.penyebab || '',
     data.perbaikan || '',
     data.alamat || '',
@@ -235,36 +284,6 @@ async function saveData(data, loc) {
     data.petugas || '',
     loc || '',
   ];
-
-  if (idx !== -1) {
-    let old = normalizedRows[idx];
-
-    let shareChanged = false;
-
-    old[0] = now;
-    old[1] = data.status || old[1];
-    old[2] = data.tiket || old[2];
-    old[4] = data.cp || old[4];
-    old[5] = data.penyebab || old[5];
-    old[6] = data.perbaikan || old[6];
-    old[7] = data.alamat || old[7];
-    old[8] = data.odp || old[8];
-    old[9] = data.petugas || old[9];
-
-    if (loc && loc !== old[10]) {
-      old[10] = loc;
-      shareChanged = true;
-    }
-
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID,
-      range: `DATA!A${idx + 1}:K${idx + 1}`,
-      valueInputOption: 'RAW',
-      resource: { values: [old] }
-    });
-
-    return { type: 'update', shareChanged };
-  }
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
@@ -291,7 +310,7 @@ async function handleMsg(msg) {
 
     const locNow = getLocation(msg);
 
-    // 🔥 FIX SHARELOK TIDAK NYASAR
+    // 🔥 SHARELOK USER SAFE
     if (locNow && lastUserInet[username]) {
       lastUserLoc[username] = locNow;
 
@@ -301,7 +320,7 @@ async function handleMsg(msg) {
       );
 
       await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
-      return; // ⛔ penting: stop supaya tidak nabrak MCU parsing
+      return;
     }
 
     const loc = getLocation(msg);
@@ -415,4 +434,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL FIX SHARELOK USER SAFE');
+console.log('🚀 FINAL PERFECT FIX (NO OVERWRITE + CP MERGE + SHARELOK AMAN)');
