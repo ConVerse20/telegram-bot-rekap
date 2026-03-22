@@ -94,6 +94,14 @@ const bufferMsg = {};
 const lastLocation = {};
 const lastInet = {};
 
+// 🔥 TAMBAHAN FIX
+const lastUserInet = {};
+const lastUserLoc = {};
+
+function getUsername(msg) {
+  return msg.from.username || `id_${msg.from.id}`;
+}
+
 function addBuffer(chatId, msg) {
   if (!bufferMsg[chatId]) bufferMsg[chatId] = [];
   bufferMsg[chatId].push(msg);
@@ -129,7 +137,7 @@ function parseMCU(txt) {
 }
 
 // =======================
-// 🔥 FIX: AMBIL MCU SAJA (TAMBAHAN)
+// 🔥 FIX: AMBIL MCU SAJA
 // =======================
 function extractMCU(text) {
   const start = text.search(/MEDICAL CHECK UP PELANGGAN/i);
@@ -176,7 +184,7 @@ function getUserTag(msg) {
 }
 
 // =======================
-// 💾 GOOGLE SHEET (ASLI)
+// 💾 GOOGLE SHEET
 // =======================
 const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS_BASE64, 'base64').toString()
@@ -279,12 +287,21 @@ async function handleMsg(msg) {
     if (msg.text && msg.text.startsWith('/cek')) return;
 
     const chatId = msg.chat.id;
+    const username = getUsername(msg);
 
-    // sharelok tetap jalan
     const locNow = getLocation(msg);
-    if (locNow && lastInet[chatId]) {
-      await saveData({ inet: lastInet[chatId] }, locNow);
+
+    // 🔥 FIX SHARELOK TIDAK NYASAR
+    if (locNow && lastUserInet[username]) {
+      lastUserLoc[username] = locNow;
+
+      await saveData(
+        { inet: lastUserInet[username] },
+        locNow
+      );
+
       await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+      return; // ⛔ penting: stop supaya tidak nabrak MCU parsing
     }
 
     const loc = getLocation(msg);
@@ -299,13 +316,11 @@ async function handleMsg(msg) {
 
     bufferMsg[chatId] = [];
 
-    // 🔥 FIX MCU ONLY
     const mcuText = extractMCU(combined);
     if (!mcuText) return;
 
     const data = parseMCU(mcuText);
 
-    // 🔥 STOP JIKA SEMUA KOSONG
     const allFields = Object.values(data);
     const isAllEmpty = allFields.every(v => !v || v.toString().trim() === '');
     if (isAllEmpty) return;
@@ -313,9 +328,12 @@ async function handleMsg(msg) {
     const emptyFields = getEmptyFields(data);
     const userTag = getUserTag(msg);
 
-    if (data.inet) lastInet[chatId] = data.inet;
+    if (data.inet) {
+      lastUserInet[username] = data.inet;
+    }
 
-    const shareloc = lastLocation[chatId] || '';
+    const shareloc = lastUserLoc[username] || undefined;
+
     const res = await saveData(data, shareloc);
 
     if (res.type === 'insert') {
@@ -352,7 +370,7 @@ Field kosong:
 }
 
 // =======================
-// 🔎 /CEK FINAL (TETAP ADA)
+// 🔎 /CEK
 // =======================
 bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   try {
@@ -397,4 +415,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL FIX TANPA MERUBAH FLOW');
+console.log('🚀 FINAL FIX SHARELOK USER SAFE');
