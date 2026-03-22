@@ -1,5 +1,5 @@
 // =======================
-// 🚀 MCU BOT FINAL (LOCK - ORIGINAL STABLE)
+// 🚀 MCU BOT FINAL (LOCK - NO CHANGE FLOW)
 // =======================
 
 const { google } = require('googleapis');
@@ -61,6 +61,23 @@ function normalizeCP(cp) {
     if (n.startsWith('0')) return '+62' + n.slice(1);
     return n;
   }).join(' / ');
+}
+
+// =======================
+// 🔥 MERGE CP (TAMBAHAN)
+// =======================
+function mergeCP(oldCP, newCP) {
+  const set = new Set();
+
+  function splitCP(cp) {
+    if (!cp) return [];
+    return cp.split('/').map(x => x.trim()).filter(Boolean);
+  }
+
+  splitCP(oldCP).forEach(v => set.add(v));
+  splitCP(newCP).forEach(v => set.add(v));
+
+  return normalizeCP(Array.from(set).join('/'));
 }
 
 // =======================
@@ -146,7 +163,7 @@ function extractMCU(text) {
 }
 
 // =======================
-// 🧠 VALIDASI
+// 🧠 VALIDASI (TETAP ADA)
 // =======================
 function getEmptyFields(data) {
   const fields = {
@@ -204,9 +221,22 @@ async function saveData(data, loc) {
     return r;
   });
 
-  let idx = -1;
+  // 🔥 AMBIL CP LAMA
+  let oldCP = '';
   for (let i = normalizedRows.length - 1; i >= 0; i--) {
     if ((normalizedRows[i][3] || '').trim() === (data.inet || '').trim()) {
+      oldCP = normalizedRows[i][4] || '';
+      break;
+    }
+  }
+
+  // 🔥 FIX: UPDATE HANYA JIKA INET + TIKET SAMA
+  let idx = -1;
+  for (let i = normalizedRows.length - 1; i >= 0; i--) {
+    if (
+      (normalizedRows[i][3] || '').trim() === (data.inet || '').trim() &&
+      (normalizedRows[i][2] || '').trim() === (data.tiket || '').trim()
+    ) {
       idx = i;
       break;
     }
@@ -219,7 +249,7 @@ async function saveData(data, loc) {
     data.status || '',
     data.tiket || '',
     data.inet || '',
-    data.cp || '',
+    mergeCP(oldCP, data.cp),
     data.penyebab || '',
     data.perbaikan || '',
     data.alamat || '',
@@ -233,8 +263,7 @@ async function saveData(data, loc) {
 
     old[0] = now;
     old[1] = data.status || old[1];
-    old[2] = data.tiket || old[2];
-    old[4] = data.cp || old[4];
+    old[4] = mergeCP(old[4], data.cp);
     old[5] = data.penyebab || old[5];
     old[6] = data.perbaikan || old[6];
     old[7] = data.alamat || old[7];
@@ -264,7 +293,7 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// 🚀 MAIN
+// 🚀 MAIN (TIDAK DIUBAH)
 // =======================
 bot.on('message', handleMsg);
 bot.on('edited_message', handleMsg);
@@ -297,10 +326,6 @@ async function handleMsg(msg) {
     if (!mcuText) return;
 
     const data = parseMCU(mcuText);
-
-    const allFields = Object.values(data);
-    const isAllEmpty = allFields.every(v => !v || v.toString().trim() === '');
-    if (isAllEmpty) return;
 
     const emptyFields = getEmptyFields(data);
     const userTag = getUserTag(msg);
@@ -340,7 +365,7 @@ Field kosong:
 }
 
 // =======================
-// 🔎 /CEK
+// 🔎 /CEK (TETAP ADA)
 // =======================
 bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   try {
@@ -385,4 +410,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 ORIGINAL STABLE RUNNING');
+console.log('🚀 FINAL FIX TANPA MERUBAH FLOW');
