@@ -151,6 +151,23 @@ function parseMCU(txt) {
 }
 
 // =======================
+// 🔥 MCU ONLY (PENTING)
+// =======================
+function extractMCU(text) {
+  const start = text.search(/MEDICAL CHECK UP PELANGGAN/i);
+  if (start === -1) return '';
+
+  const sub = text.slice(start);
+
+  const endMatch = sub.match(/PETUGAS\s*:[^\n]*/i);
+  if (!endMatch) return '';
+
+  const endIndex = sub.indexOf(endMatch[0]) + endMatch[0].length;
+
+  return sub.slice(0, endIndex);
+}
+
+// =======================
 // 💾 GOOGLE SHEET
 // =======================
 const creds = JSON.parse(
@@ -181,7 +198,7 @@ async function saveData(data, loc, isEdit = false) {
 
   const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
 
-  // 🔥 EDIT MODE → UPDATE (INET + TIKET)
+  // EDIT MODE
   if (isEdit && data.inet && data.tiket) {
     for (let i = normalizedRows.length - 1; i >= 0; i--) {
       if (
@@ -213,7 +230,7 @@ async function saveData(data, loc, isEdit = false) {
     }
   }
 
-  // 🔥 AMBIL CP LAMA
+  // ambil CP lama
   let oldCP = '';
   for (let i = normalizedRows.length - 1; i >= 0; i--) {
     if ((normalizedRows[i][3] || '').trim() === (data.inet || '').trim()) {
@@ -283,17 +300,11 @@ async function handleMsg(msg) {
 
     bufferMsg[chatId] = [];
 
+    // 🔥 FIX UTAMA (WAJIB ADA)
     const mcuText = extractMCU(combined);
     if (!mcuText) return;
 
     const data = parseMCU(mcuText);
-
-    const allFields = Object.values(data);
-    const isAllEmpty = allFields.every(v => !v || v.toString().trim() === '');
-    if (isAllEmpty) return;
-
-    const emptyFields = getEmptyFields(data);
-    const userTag = getUserTag(msg);
 
     if (data.inet) {
       lastUserInet[username] = data.inet;
@@ -303,35 +314,12 @@ async function handleMsg(msg) {
 
     const res = await saveData(data, shareloc, isEdit);
 
-    // reset sharelok setelah MCU
     lastUserLoc[username] = undefined;
 
     if (res.type === 'insert') {
       await bot.sendMessage(chatId, '🆕 Data Baru sudah Dicatet ke Google Sheet ✅');
     } else {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
-    }
-
-    if (res.shareChanged) {
-      await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
-    }
-
-    if (emptyFields.length > 0 && !msg.edit_date) {
-      await bot.sendMessage(
-        chatId,
-        `⚠️ DATA BELUM LENGKAP
-
-👤 ${userTag}
-
-Field kosong:
-- ${emptyFields.join('\n- ')}
-
-✏️ Silakan dilengkapi dengan cara *EDIT pesan sebelumnya*, tidak perlu kirim ulang.`,
-        {
-          parse_mode: 'Markdown',
-          reply_to_message_id: msg.message_id
-        }
-      );
     }
 
   } catch (err) {
@@ -385,4 +373,4 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   }
 });
 
-console.log('🚀 FINAL PERFECT (EDIT MCU + SHARELOK + CP MERGE)');
+console.log('🚀 FINAL FIX ALL (STABLE)');
