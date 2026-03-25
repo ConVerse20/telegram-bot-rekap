@@ -367,7 +367,14 @@ async function handleMsg(msg) {
     if (locFromBuffer) finalLoc = locFromBuffer;
 
     const emptyFields = getEmptyFields(data);
-    if (emptyFields === 'ALL_EMPTY') return;
+
+// 🔥 PATCH: jangan save kalau data inti kosong
+if (
+  emptyFields === 'ALL_EMPTY' ||
+  (!data.inet && !data.tiket)
+) {
+  return;
+}
 
     const res = await saveData(
       data,
