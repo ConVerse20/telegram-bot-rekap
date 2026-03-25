@@ -385,6 +385,9 @@ if (!inetFix) {
     if (!mcuText) return;
 
     const data = parseMCU(mcuText);
+    if (data.inet) {
+  mcuReady[chatId] = true;
+}
     // =======================
 // 🔥 AMBIL SHARELOK FINAL (ANTI SALAH TARGET)
 // =======================
