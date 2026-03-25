@@ -43,6 +43,9 @@ const lastLocationByUser = {};
 // 🔥 PATCH CHAT BASE (BIAR GA ERROR)
 const lastRowByChat = {};
 
+// 🔥 TRACK REMINDER MESSAGE
+const lastReminderMsg = {};
+
 function clean(v) {
   if (!v) return '';
   v = v.trim();
@@ -433,8 +436,16 @@ lastRowByUser[key] = res.rowIndex;    // 🔥 tambahan
     } else {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
     }
+    // 🔥 AUTO HAPUS REMINDER JIKA SUDAH LENGKAP
+if (emptyFields.length === 0 && lastReminderMsg[chatId]) {
+  try {
+    await bot.deleteMessage(chatId, lastReminderMsg[chatId]);
+    delete lastReminderMsg[chatId];
+  } catch (e) {}
+}
     if (emptyFields.length > 0 && !msg.edit_date) {
-  await bot.sendMessage(
+
+  const sent = await bot.sendMessage(
     chatId,
     `⚠️ DATA BELUM LENGKAP
 
@@ -449,6 +460,9 @@ Field kosong:
       reply_to_message_id: msg.message_id
     }
   );
+
+  // 🔥 simpan id reminder
+  lastReminderMsg[chatId] = sent.message_id;
 }
 
   } catch (err) {
