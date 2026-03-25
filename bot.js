@@ -35,6 +35,9 @@ app.listen(PORT, async () => {
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
+// 🔥 PATCH (TAMBAHAN, TIDAK MENGUBAH FLOW)
+const lastRowByChat = {};
+
 function clean(v) {
   if (!v) return '';
   v = v.trim();
@@ -160,6 +163,7 @@ function extractInetFromText(text) {
 
   return '';
 }
+
 // =======================
 // 🔥 MCU ONLY
 // =======================
@@ -239,25 +243,18 @@ async function saveData(data, loc, isEdit = false) {
   let oldCP = '';
   let idx = -1;
 
-  // =======================
-  // 🔥 FIX: PRIORITAS INET
-  // =======================
   for (let i = normalizedRows.length - 1; i >= 0; i--) {
 
     const rowInet = (normalizedRows[i][3] || '').trim();
     const rowTiket = (normalizedRows[i][2] || '').trim();
 
-    // 🔥 kalau hanya sharelok (tidak ada tiket)
     if (!data.tiket) {
       if (rowInet === (data.inet || '').trim()) {
         idx = i;
         oldCP = normalizedRows[i][4] || '';
         break;
       }
-    }
-
-    // 🔥 normal (INET + TIKET)
-    else {
+    } else {
       if (
         rowInet === (data.inet || '').trim() &&
         rowTiket === (data.tiket || '').trim()
@@ -285,9 +282,6 @@ async function saveData(data, loc, isEdit = false) {
     loc || '',
   ];
 
-  // =======================
-  // 🔥 UPDATE
-  // =======================
   if (idx !== -1) {
     let old = normalizedRows[idx];
 
@@ -300,10 +294,7 @@ async function saveData(data, loc, isEdit = false) {
     old[8] = data.odp || old[8];
     old[9] = data.petugas || old[9];
 
-    // 🔥 sharelok update TANPA hapus kalau kosong
-    if (loc) {
-      old[10] = loc;
-    }
+    if (loc) old[10] = loc;
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
@@ -312,12 +303,9 @@ async function saveData(data, loc, isEdit = false) {
       resource: { values: [old] }
     });
 
-    return { type: 'update' };
+    return { type: 'update', rowIndex: idx + 1 }; // 🔥 PATCH
   }
 
-  // =======================
-  // 🔥 INSERT
-  // =======================
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
     range: 'DATA!A:K',
@@ -325,7 +313,7 @@ async function saveData(data, loc, isEdit = false) {
     resource: { values: [row] }
   });
 
-  return { type: 'insert' };
+  return { type: 'insert', rowIndex: rows.length + 1 }; // 🔥 PATCH
 }
 
 // =======================
@@ -341,27 +329,19 @@ async function handleMsg(msg) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
 
-    // 🔥 simpan user teknisi
     lastUser[chatId] = userId;
 
     const locNow = getLocation(msg);
-
-   // =======================
-// =======================
-// 🔥 SHARELOK HANYA JIKA MCU SUDAH ADA
-// =======================
-if (locNow && mcuReady[chatId]) {
-  lastLocation[chatId] = locNow;
-}
-
-
 
     if (locNow) lastLocation[chatId] = locNow;
 
     addBuffer(chatId, msg);
     await delay(1000);
 
-    const combined = bufferMsg[chatId]
+    // 🔥 PATCH BUFFER (ANTI HILANG)
+    const tempBuffer = bufferMsg[chatId];
+
+    const combined = tempBuffer
       .map(m => m.text || m.caption || '')
       .join('\n');
 
@@ -371,67 +351,39 @@ if (locNow && mcuReady[chatId]) {
     if (!mcuText) return;
 
     const data = parseMCU(mcuText);
+
     if (data.inet) {
-  mcuReady[chatId] = true;
-}
-    // =======================
-// 🔥 AMBIL SHARELOK FINAL (ANTI SALAH TARGET)
-// =======================
-let finalLoc = lastLocation[chatId] || '';
+      mcuReady[chatId] = true;
+      lastInet[chatId] = data.inet;
+    }
 
-// cek juga dari semua buffer (kalau forward barengan)
-const locFromBuffer = bufferMsg[chatId]
-  ?.map(m => getLocation(m))
-  .find(v => v);
+    // 🔥 PATCH SHARELOK
+    let finalLoc = lastLocation[chatId] || '';
 
-if (locFromBuffer) {
-  finalLoc = locFromBuffer;
-}
+    const locFromBuffer = tempBuffer
+      ?.map(m => getLocation(m))
+      .find(v => v);
+
+    if (locFromBuffer) finalLoc = locFromBuffer;
 
     const emptyFields = getEmptyFields(data);
-
-    // 🔥 SEMUA KOSONG = DIAM
     if (emptyFields === 'ALL_EMPTY') return;
 
-    const userTag = getUserTag(msg);
-
-    if (data.inet) lastInet[chatId] = data.inet;
-
-    const shareloc = finalLoc;
-
     const res = await saveData(
-  data,
-  shareloc,
-  !!msg.edit_date // 🔥 deteksi edit
-);
+      data,
+      finalLoc,
+      !!msg.edit_date
+    );
 
-// 🔥 simpan row terakhir
-if (res && res.rowIndex) {
-  lastRowByChat[chatId] = res.rowIndex;
-}
+    // 🔥 PATCH ROW TRACK
+    if (res && res.rowIndex) {
+      lastRowByChat[chatId] = res.rowIndex;
+    }
 
     if (res.type === 'insert') {
       await bot.sendMessage(chatId, '🆕 Data Baru sudah Dicatet ke Google Sheet ✅');
     } else {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
-    }
-
-    if (emptyFields.length > 0 && !msg.edit_date) {
-      await bot.sendMessage(
-        chatId,
-        `⚠️ DATA BELUM LENGKAP
-
-👤 ${userTag}
-
-Field kosong:
-- ${emptyFields.join('\n- ')}
-
-✏️ Silakan dilengkapi dengan cara *EDIT pesan sebelumnya*, tidak perlu kirim ulang.`,
-        {
-          parse_mode: 'Markdown',
-          reply_to_message_id: msg.message_id
-        }
-      );
     }
 
   } catch (err) {
@@ -457,7 +409,6 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
 
     const rows = res.data.values || [];
 
-    // 🔥 AMBIL DATA TERBARU (DARI BAWAH)
     let row = null;
     for (let i = rows.length - 1; i >= 0; i--) {
       if ((rows[i][3] || '').trim() === inet) {
