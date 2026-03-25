@@ -225,14 +225,33 @@ async function saveData(data, loc, isEdit = false) {
   let oldCP = '';
   let idx = -1;
 
+  // =======================
+  // 🔥 FIX: PRIORITAS INET
+  // =======================
   for (let i = normalizedRows.length - 1; i >= 0; i--) {
-    if (
-      (normalizedRows[i][3] || '').trim() === (data.inet || '').trim() &&
-      (normalizedRows[i][2] || '').trim() === (data.tiket || '').trim()
-    ) {
-      idx = i;
-      oldCP = normalizedRows[i][4] || '';
-      break;
+
+    const rowInet = (normalizedRows[i][3] || '').trim();
+    const rowTiket = (normalizedRows[i][2] || '').trim();
+
+    // 🔥 kalau hanya sharelok (tidak ada tiket)
+    if (!data.tiket) {
+      if (rowInet === (data.inet || '').trim()) {
+        idx = i;
+        oldCP = normalizedRows[i][4] || '';
+        break;
+      }
+    }
+
+    // 🔥 normal (INET + TIKET)
+    else {
+      if (
+        rowInet === (data.inet || '').trim() &&
+        rowTiket === (data.tiket || '').trim()
+      ) {
+        idx = i;
+        oldCP = normalizedRows[i][4] || '';
+        break;
+      }
     }
   }
 
@@ -249,10 +268,12 @@ async function saveData(data, loc, isEdit = false) {
     data.alamat || '',
     data.odp || '',
     data.petugas || '',
-    loc || '', // 🔥 kalau tidak ada sharelok = kosong
+    loc || '',
   ];
 
-  // 🔥 EDIT = WAJIB UPDATE
+  // =======================
+  // 🔥 UPDATE
+  // =======================
   if (idx !== -1) {
     let old = normalizedRows[idx];
 
@@ -265,8 +286,10 @@ async function saveData(data, loc, isEdit = false) {
     old[8] = data.odp || old[8];
     old[9] = data.petugas || old[9];
 
-    // 🔥 sharelok ikut teknisi, kalau tidak ada → kosongkan
-    old[10] = loc || '';
+    // 🔥 sharelok update TANPA hapus kalau kosong
+    if (loc) {
+      old[10] = loc;
+    }
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
@@ -278,6 +301,9 @@ async function saveData(data, loc, isEdit = false) {
     return { type: 'update' };
   }
 
+  // =======================
+  // 🔥 INSERT
+  // =======================
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
     range: 'DATA!A:K',
