@@ -35,8 +35,10 @@ app.listen(PORT, async () => {
 // =======================
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
-// 🔥 PATCH (TAMBAHAN, TIDAK MENGUBAH FLOW)
-const lastRowByChat = {};
+// 🔥 PATCH USER BASE (ANTI TERTIMPA)
+const lastRowByUser = {};
+const lastInetByUser = {};
+const lastLocationByUser = {};
 
 function clean(v) {
   if (!v) return '';
