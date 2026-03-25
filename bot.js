@@ -405,7 +405,7 @@ if (locFromBuffer) {
 
     if (data.inet) lastInet[chatId] = data.inet;
 
-    const shareloc = lastLocation[chatId] || '';
+    const shareloc = finalLoc;
 
     const res = await saveData(
       data,
