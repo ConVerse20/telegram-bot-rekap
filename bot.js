@@ -104,6 +104,9 @@ function getLocation(msg) {
   return '';
 }
 
+// 🔥 FLAG MCU SUDAH MASUK
+const mcuReady = {};
+
 // =======================
 // 📦 BUFFER
 // =======================
