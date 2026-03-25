@@ -433,6 +433,23 @@ lastRowByUser[key] = res.rowIndex;    // 🔥 tambahan
     } else {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
     }
+    if (emptyFields.length > 0 && !msg.edit_date) {
+  await bot.sendMessage(
+    chatId,
+    `⚠️ DATA BELUM LENGKAP
+
+👤 ${getUserTag(msg)}
+
+Field kosong:
+- ${emptyFields.join('\n- ')}
+
+✏️ Silakan dilengkapi dengan cara EDIT pesan sebelumnya.`,
+    {
+      parse_mode: 'Markdown',
+      reply_to_message_id: msg.message_id
+    }
+  );
+}
 
   } catch (err) {
     console.log(err);
