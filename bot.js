@@ -409,9 +409,7 @@ lastInetByUser[key] = data.inet; // 🔥 tambahan
 
     const emptyFields = getEmptyFields(data);
     // =======================
-// 🔥 PATCH: SHARELOK SAJA (UPDATE KE DATA TERAKHIR)
-// =======================
- 
+
 
 // 🔥 PATCH: JANGAN SAVE MCU KOSONG
 if (emptyFields === 'ALL_EMPTY') return;
@@ -420,18 +418,6 @@ if (emptyFields === 'ALL_EMPTY') return;
 if (!data.inet && !data.tiket) {
 
   if (lastRowByUser[key] && lastLocationByUser[key]) {
-
-    await saveData(
-      { inet: lastInetByUser[key] },
-      lastLocationByUser[key],
-      false
-    );
-
-    await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
-  }
-
-  return;
-}
 
     const res = await saveData(
       data,
