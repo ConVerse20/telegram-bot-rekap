@@ -64,7 +64,7 @@ function normalizeCP(cp) {
 }
 
 // =======================
-// 🔥 MERGE CP (TAMBAHAN)
+// 🔥 MERGE CP
 // =======================
 function mergeCP(oldCP, newCP) {
   const set = new Set();
@@ -110,6 +110,7 @@ function getLocation(msg) {
 const bufferMsg = {};
 const lastLocation = {};
 const lastInet = {};
+const lastUser = {}; // 🔥 tambahan
 
 function addBuffer(chatId, msg) {
   if (!bufferMsg[chatId]) bufferMsg[chatId] = [];
@@ -163,7 +164,7 @@ function extractMCU(text) {
 }
 
 // =======================
-// 🧠 VALIDASI (TETAP ADA)
+// 🧠 VALIDASI
 // =======================
 function getEmptyFields(data) {
   const fields = {
@@ -182,7 +183,7 @@ function getEmptyFields(data) {
     .filter(([_, v]) => !v || v.toString().trim() === '')
     .map(([k]) => k);
 
-  if (kosong.length === Object.keys(fields).length) return [];
+  if (kosong.length === Object.keys(fields).length) return 'ALL_EMPTY';
 
   return kosong;
 }
@@ -205,7 +206,7 @@ const auth = new google.auth.GoogleAuth({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-async function saveData(data, loc) {
+async function saveData(data, loc, isEdit = false) {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
 
@@ -221,23 +222,16 @@ async function saveData(data, loc) {
     return r;
   });
 
-  // 🔥 AMBIL CP LAMA
   let oldCP = '';
-  for (let i = normalizedRows.length - 1; i >= 0; i--) {
-    if ((normalizedRows[i][3] || '').trim() === (data.inet || '').trim()) {
-      oldCP = normalizedRows[i][4] || '';
-      break;
-    }
-  }
-
-  // 🔥 FIX: UPDATE HANYA JIKA INET + TIKET SAMA
   let idx = -1;
+
   for (let i = normalizedRows.length - 1; i >= 0; i--) {
     if (
       (normalizedRows[i][3] || '').trim() === (data.inet || '').trim() &&
       (normalizedRows[i][2] || '').trim() === (data.tiket || '').trim()
     ) {
       idx = i;
+      oldCP = normalizedRows[i][4] || '';
       break;
     }
   }
@@ -255,9 +249,10 @@ async function saveData(data, loc) {
     data.alamat || '',
     data.odp || '',
     data.petugas || '',
-    loc || '',
+    loc || '', // 🔥 kalau tidak ada sharelok = kosong
   ];
 
+  // 🔥 EDIT = WAJIB UPDATE
   if (idx !== -1) {
     let old = normalizedRows[idx];
 
@@ -270,7 +265,8 @@ async function saveData(data, loc) {
     old[8] = data.odp || old[8];
     old[9] = data.petugas || old[9];
 
-    if (loc) old[10] = loc;
+    // 🔥 sharelok ikut teknisi, kalau tidak ada → kosongkan
+    old[10] = loc || '';
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
@@ -293,7 +289,7 @@ async function saveData(data, loc) {
 }
 
 // =======================
-// 🚀 MAIN (TIDAK DIUBAH)
+// 🚀 MAIN
 // =======================
 bot.on('message', handleMsg);
 bot.on('edited_message', handleMsg);
@@ -303,15 +299,20 @@ async function handleMsg(msg) {
     if (msg.text && msg.text.startsWith('/cek')) return;
 
     const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    // 🔥 simpan user teknisi
+    lastUser[chatId] = userId;
 
     const locNow = getLocation(msg);
-    if (locNow && lastInet[chatId]) {
-      await saveData({ inet: lastInet[chatId] }, locNow);
+
+    // 🔥 sharelok hanya dari user yg sama
+    if (locNow && lastInet[chatId] && lastUser[chatId] === userId) {
+      await saveData({ inet: lastInet[chatId] }, locNow, false);
       await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
     }
 
-    const loc = getLocation(msg);
-    if (loc) lastLocation[chatId] = loc;
+    if (locNow) lastLocation[chatId] = locNow;
 
     addBuffer(chatId, msg);
     await delay(1000);
@@ -328,12 +329,21 @@ async function handleMsg(msg) {
     const data = parseMCU(mcuText);
 
     const emptyFields = getEmptyFields(data);
+
+    // 🔥 SEMUA KOSONG = DIAM
+    if (emptyFields === 'ALL_EMPTY') return;
+
     const userTag = getUserTag(msg);
 
     if (data.inet) lastInet[chatId] = data.inet;
 
     const shareloc = lastLocation[chatId] || '';
-    const res = await saveData(data, shareloc);
+
+    const res = await saveData(
+      data,
+      shareloc,
+      !!msg.edit_date // 🔥 deteksi edit
+    );
 
     if (res.type === 'insert') {
       await bot.sendMessage(chatId, '🆕 Data Baru sudah Dicatet ke Google Sheet ✅');
@@ -365,7 +375,7 @@ Field kosong:
 }
 
 // =======================
-// 🔎 /CEK (TETAP ADA)
+// 🔎 /CEK
 // =======================
 bot.onText(/^\/cek (.+)/i, async (msg, match) => {
   try {
