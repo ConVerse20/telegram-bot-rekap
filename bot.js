@@ -414,7 +414,6 @@ if (!data.inet && !data.tiket) {
       !!msg.edit_date
     );
 
-    // 🔥 PATCH ROW TRACK
     if (res && res.rowIndex) {
       lastRowByChat[chatId] = res.rowIndex;
       lastRowByUser[key] = res.rowIndex;
@@ -426,7 +425,6 @@ if (!data.inet && !data.tiket) {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
     }
 
-    // 🔥 AUTO HAPUS REMINDER
     if (emptyFields.length === 0 && lastReminderMsg[chatId]) {
       try {
         await bot.deleteMessage(chatId, lastReminderMsg[chatId]);
@@ -435,7 +433,6 @@ if (!data.inet && !data.tiket) {
     }
 
     if (emptyFields.length > 0 && !msg.edit_date) {
-
       const sent = await bot.sendMessage(
         chatId,
         `⚠️ DATA BELUM LENGKAP
@@ -454,10 +451,11 @@ Field kosong:
 
       lastReminderMsg[chatId] = sent.message_id;
     }
-  }
-}
 
-// ✅ INI YANG BENAR: catch di luar semua block
+  } // ✅ tutup IF dalam
+} // ✅ tutup IF luar
+
+// ✅ BARU catch
 } catch (err) {
   console.log(err);
 }
