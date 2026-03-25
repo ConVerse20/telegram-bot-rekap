@@ -365,10 +365,7 @@ if (!inetFix) {
   if (m) inetFix = clean(m[1]);
 }
 
-if (locNow && inetFix) {
-  await saveData({ inet: inetFix }, locNow, false);
-  await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
-}
+
 
     if (locNow) lastLocation[chatId] = locNow;
 
