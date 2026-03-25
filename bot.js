@@ -40,6 +40,9 @@ const lastRowByUser = {};
 const lastInetByUser = {};
 const lastLocationByUser = {};
 
+// 🔥 PATCH CHAT BASE (BIAR GA ERROR)
+const lastRowByChat = {};
+
 function clean(v) {
   if (!v) return '';
   v = v.trim();
@@ -336,7 +339,10 @@ async function handleMsg(msg) {
 
     const locNow = getLocation(msg);
 
-    if (locNow) lastLocation[chatId] = locNow;
+    if (locNow) {
+  lastLocation[chatId] = locNow; // tetap (jangan dihapus)
+  lastLocationByUser[key] = locNow; // 🔥 tambahan
+}
 
     addBuffer(chatId, msg);
     await delay(1000);
@@ -357,7 +363,8 @@ async function handleMsg(msg) {
 
     if (data.inet) {
       mcuReady[chatId] = true;
-      lastInet[chatId] = data.inet;
+      lastInet[chatId] = data.inet; // tetap
+lastInetByUser[key] = data.inet; // 🔥 tambahan
     }
 
     // 🔥 PATCH SHARELOK
@@ -373,34 +380,19 @@ async function handleMsg(msg) {
     // =======================
 // 🔥 PATCH: SHARELOK SAJA (UPDATE KE DATA TERAKHIR)
 // =======================
-if (
-  (!data.inet && !data.tiket) &&
-  lastRowByChat[key] &&
-  lastLocation[key]
-) {
-  await saveData(
-    { inet: lastInet[chatId] },
-    lastLocation[key],
-    false
-  );
-
-  await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
-  return;
-}
+ 
 
 // 🔥 PATCH: JANGAN SAVE MCU KOSONG
 if (emptyFields === 'ALL_EMPTY') return;
 
-// 🔥 PATCH: SHARELOK SAJA (TANPA MCU)
+// 🔥 PATCH: SHARELOK SAJA (AMAN PER USER)
 if (!data.inet && !data.tiket) {
 
-  const key = `${chatId}_${userId}`;
-
-  if (lastRowByUser[key] && lastLocation[key]) {
+  if (lastRowByUser[key] && lastLocationByUser[key]) {
 
     await saveData(
       { inet: lastInetByUser[key] },
-      lastLocation[key],
+      lastLocationByUser[key],
       false
     );
 
@@ -418,7 +410,8 @@ if (!data.inet && !data.tiket) {
 
     // 🔥 PATCH ROW TRACK
     if (res && res.rowIndex) {
-      lastRowByChat[key] = res.rowIndex;
+      lastRowByChat[chatId] = res.rowIndex; // tetap
+lastRowByUser[key] = res.rowIndex;    // 🔥 tambahan
     }
 
     if (res.type === 'insert') {
