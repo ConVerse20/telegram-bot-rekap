@@ -385,11 +385,25 @@ if (
   return;
 }
 
-// 🔥 PATCH: jangan save kalau data inti kosong
-if (
-  emptyFields === 'ALL_EMPTY' ||
-  (!data.inet && !data.tiket)
-) {
+// 🔥 PATCH: JANGAN SAVE MCU KOSONG
+if (emptyFields === 'ALL_EMPTY') return;
+
+// 🔥 PATCH: SHARELOK SAJA (TANPA MCU)
+if (!data.inet && !data.tiket) {
+
+  const key = `${chatId}_${userId}`;
+
+  if (lastRowByUser[key] && lastLocation[key]) {
+
+    await saveData(
+      { inet: lastInetByUser[key] },
+      lastLocation[key],
+      false
+    );
+
+    await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+  }
+
   return;
 }
 
