@@ -360,10 +360,24 @@ async function handleMsg(msg) {
     bufferMsg[chatId] = [];
 
     const mcuText = extractMCU(combined);
-    if (!mcuText) {
+  if (!mcuText) {
 
-  // 🔥 hanya simpan kalau user ini sudah pernah kirim MCU
-  if (mcuReady[chatId] && lastInetByUser[key] && lastLocationByUser[key]) {
+  const locOnly = getLocation(msg);
+
+  // 🔥 hanya proses kalau BENAR2 sharelok
+  if (locOnly && lastInetByUser[key]) {
+
+    await saveData(
+      { inet: lastInetByUser[key] },
+      locOnly,
+      false
+    );
+
+    await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+  }
+
+  return;
+}
     await saveData(
       { inet: lastInetByUser[key] },
       lastLocationByUser[key],
