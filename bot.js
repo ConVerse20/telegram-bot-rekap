@@ -330,6 +330,7 @@ async function handleMsg(msg) {
 
     const chatId = msg.chat.id;
     const userId = msg.from.id;
+    const key = `${chatId}_${userId}`;
 
     lastUser[chatId] = userId;
 
