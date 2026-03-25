@@ -147,6 +147,17 @@ function parseMCU(txt) {
 }
 
 // =======================
+// 🔍 AMBIL INET DARI TEXT (FALLBACK)
+// =======================
+function extractInetFromText(text) {
+  if (!text) return '';
+
+  const m = text.match(/INET\/TLP\s*:\s*([^\n]+)/i);
+  if (m) return clean(m[1]);
+
+  return '';
+}
+// =======================
 // 🔥 MCU ONLY
 // =======================
 function extractMCU(text) {
