@@ -357,7 +357,21 @@ async function handleMsg(msg) {
     bufferMsg[chatId] = [];
 
     const mcuText = extractMCU(combined);
-    if (!mcuText) return;
+    if (!mcuText) {
+
+  // 🔥 hanya simpan kalau user ini sudah pernah kirim MCU
+  if (mcuReady[chatId] && lastInetByUser[key] && lastLocationByUser[key]) {
+    await saveData(
+      { inet: lastInetByUser[key] },
+      lastLocationByUser[key],
+      false
+    );
+
+    await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+  }
+
+  return;
+}
 
     const data = parseMCU(mcuText);
 
