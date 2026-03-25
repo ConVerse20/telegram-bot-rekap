@@ -343,11 +343,22 @@ async function handleMsg(msg) {
 
     const locNow = getLocation(msg);
 
-    // 🔥 sharelok hanya dari user yg sama
-    if (locNow && lastInet[chatId] && lastUser[chatId] === userId) {
-      await saveData({ inet: lastInet[chatId] }, locNow, false);
-      await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
-    }
+   // =======================
+// 🔥 SHARELOK FIX (SUPPORT FORWARD)
+// =======================
+let inetFix = lastInet[chatId];
+
+// fallback dari isi pesan (forward / text)
+if (!inetFix) {
+  const textAll = msg.text || msg.caption || '';
+  const m = textAll.match(/INET\/TLP\s*:\s*([^\n]+)/i);
+  if (m) inetFix = clean(m[1]);
+}
+
+if (locNow && inetFix) {
+  await saveData({ inet: inetFix }, locNow, false);
+  await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+}
 
     if (locNow) lastLocation[chatId] = locNow;
 
