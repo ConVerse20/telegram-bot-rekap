@@ -397,7 +397,26 @@ lastInetByUser[key] = data.inet; // 🔥 tambahan
     if (locFromBuffer) finalLoc = locFromBuffer;
 
     const emptyFields = getEmptyFields(data);
-    // =======================
+// 🔥 FIX: SAVE MCU NORMAL
+if (data.inet) {
+
+  const res = await saveData(
+    data,
+    finalLoc,
+    !!msg.edit_date
+  );
+
+  if (res && res.rowIndex) {
+    lastRowByChat[chatId] = res.rowIndex;
+    lastRowByUser[key] = res.rowIndex;
+  }
+
+  if (res.type === 'insert') {
+    await bot.sendMessage(chatId, '🆕 Data MCU baru masuk ke Google Sheet ✅');
+  } else {
+    await bot.sendMessage(chatId, '🔄 Data MCU berhasil di-update ke Google Sheet ✅');
+  }
+}
 
 
 // 🔥 PATCH: JANGAN SAVE MCU KOSONG
