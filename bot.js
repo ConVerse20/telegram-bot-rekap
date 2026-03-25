@@ -391,7 +391,15 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
     });
 
     const rows = res.data.values || [];
-    const row = rows.find(r => r[3] === inet);
+
+    // 🔥 AMBIL DATA TERBARU (DARI BAWAH)
+    let row = null;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if ((rows[i][3] || '').trim() === inet) {
+        row = rows[i];
+        break;
+      }
+    }
 
     if (!row) {
       return bot.sendMessage(chatId, '❌ Data tidak ditemukan');
