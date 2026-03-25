@@ -416,8 +416,8 @@ if (!data.inet && !data.tiket) {
 
     // 🔥 PATCH ROW TRACK
     if (res && res.rowIndex) {
-      lastRowByChat[chatId] = res.rowIndex; // tetap
-lastRowByUser[key] = res.rowIndex;    // 🔥 tambahan
+      lastRowByChat[chatId] = res.rowIndex;
+      lastRowByUser[key] = res.rowIndex;
     }
 
     if (res.type === 'insert') {
@@ -425,18 +425,20 @@ lastRowByUser[key] = res.rowIndex;    // 🔥 tambahan
     } else {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
     }
-    // 🔥 AUTO HAPUS REMINDER JIKA SUDAH LENGKAP
-if (emptyFields.length === 0 && lastReminderMsg[chatId]) {
-  try {
-    await bot.deleteMessage(chatId, lastReminderMsg[chatId]);
-    delete lastReminderMsg[chatId];
-  } catch (e) {}
-}
+
+    // 🔥 AUTO HAPUS REMINDER
+    if (emptyFields.length === 0 && lastReminderMsg[chatId]) {
+      try {
+        await bot.deleteMessage(chatId, lastReminderMsg[chatId]);
+        delete lastReminderMsg[chatId];
+      } catch (e) {}
+    }
+
     if (emptyFields.length > 0 && !msg.edit_date) {
 
-  const sent = await bot.sendMessage(
-    chatId,
-    `⚠️ DATA BELUM LENGKAP
+      const sent = await bot.sendMessage(
+        chatId,
+        `⚠️ DATA BELUM LENGKAP
 
 👤 ${getUserTag(msg)}
 
@@ -444,19 +446,20 @@ Field kosong:
 - ${emptyFields.join('\n- ')}
 
 ✏️ Silakan dilengkapi dengan cara EDIT pesan sebelumnya.`,
-    {
-      parse_mode: 'Markdown',
-      reply_to_message_id: msg.message_id
-    }
-  );
+        {
+          parse_mode: 'Markdown',
+          reply_to_message_id: msg.message_id
+        }
+      );
 
-  // 🔥 simpan id reminder
-  lastReminderMsg[chatId] = sent.message_id;
+      lastReminderMsg[chatId] = sent.message_id;
+    }
+  }
 }
 
-  } catch (err) {
-    console.log(err);
-  }
+// ✅ INI YANG BENAR: catch di luar semua block
+} catch (err) {
+  console.log(err);
 }
 
 // =======================
