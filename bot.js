@@ -378,17 +378,6 @@ async function handleMsg(msg) {
 
   return;
 }
-    await saveData(
-      { inet: lastInetByUser[key] },
-      lastLocationByUser[key],
-      false
-    );
-
-    await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
-  }
-
-  return;
-}
 
     const data = parseMCU(mcuText);
 
