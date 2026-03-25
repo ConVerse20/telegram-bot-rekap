@@ -386,7 +386,7 @@ if (res && res.rowIndex) {
     if (data.inet) {
       mcuReady[chatId] = true;
       lastInet[chatId] = data.inet; // tetap
-lastInetByUser[key] = data.inet; // 🔥 tambahan
+
     }
 
     // 🔥 PATCH SHARELOK
@@ -399,14 +399,21 @@ lastInetByUser[key] = data.inet; // 🔥 tambahan
     if (locFromBuffer) finalLoc = locFromBuffer;
 
     const emptyFields = getEmptyFields(data);
-// 🔥 FIX: SAVE MCU NORMAL
-if (data.inet) {
+
+// 🔥 STOP kalau kosong semua (HARUS DI ATAS)
+if (emptyFields === 'ALL_EMPTY') return;
+
+// 🔥 ANTI DOUBLE MCU
+if (data.inet && lastInetByUser[key] !== data.inet) {
 
   const res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
+
   if (res && res.rowIndex) {
     lastRowByChat[chatId] = res.rowIndex;
     lastRowByUser[key] = res.rowIndex;
   }
+
+  lastInetByUser[key] = data.inet;
 
   if (res.type === 'insert') {
     await bot.sendMessage(chatId, '🆕 Data MCU baru masuk ke Google Sheet ✅');
@@ -416,8 +423,7 @@ if (data.inet) {
 }
 
 
-// 🔥 PATCH: JANGAN SAVE MCU KOSONG
-if (emptyFields === 'ALL_EMPTY') return;
+
 
 // 🔥 PATCH: SHARELOK SAJA (AMAN PER USER)
 if (!data.inet && !data.tiket) {
