@@ -400,10 +400,15 @@ if (locFromBuffer) {
     const shareloc = finalLoc;
 
     const res = await saveData(
-      data,
-      shareloc,
-      !!msg.edit_date // 🔥 deteksi edit
-    );
+  data,
+  shareloc,
+  !!msg.edit_date // 🔥 deteksi edit
+);
+
+// 🔥 simpan row terakhir
+if (res && res.rowIndex) {
+  lastRowByChat[chatId] = res.rowIndex;
+}
 
     if (res.type === 'insert') {
       await bot.sendMessage(chatId, '🆕 Data Baru sudah Dicatet ke Google Sheet ✅');
