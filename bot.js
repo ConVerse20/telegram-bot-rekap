@@ -344,11 +344,21 @@ async function handleMsg(msg) {
     const locNow = getLocation(msg);
 
    // =======================
-// 🔥 SHARELOK FIX (SUPPORT FORWARD)
+// 🔥 SHARELOK SUPER FIX (SUPPORT FORWARD + BUFFER)
 // =======================
 let inetFix = lastInet[chatId];
 
-// fallback dari isi pesan (forward / text)
+// 🔥 ambil dari buffer (forward sebelumnya)
+if (!inetFix && bufferMsg[chatId]) {
+  const combinedText = bufferMsg[chatId]
+    .map(m => m.text || m.caption || '')
+    .join('\n');
+
+  const m = combinedText.match(/INET\/TLP\s*:\s*([^\n]+)/i);
+  if (m) inetFix = clean(m[1]);
+}
+
+// 🔥 fallback dari message sekarang
 if (!inetFix) {
   const textAll = msg.text || msg.caption || '';
   const m = textAll.match(/INET\/TLP\s*:\s*([^\n]+)/i);
