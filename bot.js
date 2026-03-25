@@ -249,30 +249,27 @@ async function saveData(data, loc, isEdit = false) {
   });
 
   let oldCP = '';
-  let idx = -1;
+let idx = -1;
 
+// 🔥 PRIORITAS: pakai row terakhir user
+if (data._key && lastRowByUser[data._key]) {
+  idx = lastRowByUser[data._key] - 1;
+
+  if (normalizedRows[idx]) {
+    oldCP = normalizedRows[idx][4] || '';
+  }
+}
+
+// 🔥 FALLBACK: kalau belum ada row user
+if (idx === -1) {
   for (let i = normalizedRows.length - 1; i >= 0; i--) {
-
-    const rowInet = (normalizedRows[i][3] || '').trim();
-    const rowTiket = (normalizedRows[i][2] || '').trim();
-
-    if (!data.tiket) {
-      if (rowInet === (data.inet || '').trim()) {
-        idx = i;
-        oldCP = normalizedRows[i][4] || '';
-        break;
-      }
-    } else {
-      if (
-        rowInet === (data.inet || '').trim() &&
-        rowTiket === (data.tiket || '').trim()
-      ) {
-        idx = i;
-        oldCP = normalizedRows[i][4] || '';
-        break;
-      }
+    if ((normalizedRows[i][3] || '').trim() === (data.inet || '').trim()) {
+      idx = i;
+      oldCP = normalizedRows[i][4] || '';
+      break;
     }
   }
+}
 
   const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
 
@@ -400,11 +397,7 @@ lastInetByUser[key] = data.inet; // 🔥 tambahan
 // 🔥 FIX: SAVE MCU NORMAL
 if (data.inet) {
 
-  const res = await saveData(
-    data,
-    finalLoc,
-    !!msg.edit_date
-  );
+  const res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
 
   if (res && res.rowIndex) {
     lastRowByChat[chatId] = res.rowIndex;
