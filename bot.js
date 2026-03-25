@@ -364,11 +364,16 @@ async function handleMsg(msg) {
   // 🔥 hanya proses kalau BENAR2 sharelok
   if (locOnly && lastInetByUser[key]) {
 
-    await saveData(
-      { inet: lastInetByUser[key] },
-      locOnly,
-      false
-    );
+    const res = await saveData(
+  { inet: lastInetByUser[key], _key: key },
+  locOnly,
+  false
+);
+
+if (res && res.rowIndex) {
+  lastRowByUser[key] = res.rowIndex;
+  lastRowByChat[chatId] = res.rowIndex;
+}
 
     await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
   }
@@ -398,7 +403,6 @@ lastInetByUser[key] = data.inet; // 🔥 tambahan
 if (data.inet) {
 
   const res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
-
   if (res && res.rowIndex) {
     lastRowByChat[chatId] = res.rowIndex;
     lastRowByUser[key] = res.rowIndex;
