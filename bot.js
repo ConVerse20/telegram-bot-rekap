@@ -372,12 +372,12 @@ async function handleMsg(msg) {
 // =======================
 if (
   (!data.inet && !data.tiket) &&
-  lastRowByChat[chatId] &&
-  lastLocation[chatId]
+  lastRowByChat[key] &&
+  lastLocation[key]
 ) {
   await saveData(
     { inet: lastInet[chatId] },
-    lastLocation[chatId],
+    lastLocation[key],
     false
   );
 
@@ -415,7 +415,7 @@ if (!data.inet && !data.tiket) {
 
     // 🔥 PATCH ROW TRACK
     if (res && res.rowIndex) {
-      lastRowByChat[chatId] = res.rowIndex;
+      lastRowByChat[key] = res.rowIndex;
     }
 
     if (res.type === 'insert') {
