@@ -367,6 +367,23 @@ async function handleMsg(msg) {
     if (locFromBuffer) finalLoc = locFromBuffer;
 
     const emptyFields = getEmptyFields(data);
+    // =======================
+// 🔥 PATCH: SHARELOK SAJA (UPDATE KE DATA TERAKHIR)
+// =======================
+if (
+  (!data.inet && !data.tiket) &&
+  lastRowByChat[chatId] &&
+  lastLocation[chatId]
+) {
+  await saveData(
+    { inet: lastInet[chatId] },
+    lastLocation[chatId],
+    false
+  );
+
+  await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+  return;
+}
 
 // 🔥 PATCH: jangan save kalau data inti kosong
 if (
