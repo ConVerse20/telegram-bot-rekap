@@ -382,6 +382,19 @@ if (!inetFix) {
     if (!mcuText) return;
 
     const data = parseMCU(mcuText);
+    // =======================
+// 🔥 AMBIL SHARELOK FINAL (ANTI SALAH TARGET)
+// =======================
+let finalLoc = lastLocation[chatId] || '';
+
+// cek juga dari semua buffer (kalau forward barengan)
+const locFromBuffer = bufferMsg[chatId]
+  ?.map(m => getLocation(m))
+  .find(v => v);
+
+if (locFromBuffer) {
+  finalLoc = locFromBuffer;
+}
 
     const emptyFields = getEmptyFields(data);
 
