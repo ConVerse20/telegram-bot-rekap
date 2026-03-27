@@ -403,7 +403,10 @@ if (res && res.rowIndex) {
     }
 
     // 🔥 PATCH SHARELOK
-    let finalLoc = lastLocation[chatId] || '';
+    let finalLoc =
+  lastLocationByUser[key] ||   // 🔥 prioritas per user
+  lastLocation[chatId] ||      // fallback per chat
+  '';
 
     const locFromBuffer = tempBuffer
       ?.map(m => getLocation(m))
