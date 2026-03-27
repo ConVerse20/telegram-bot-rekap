@@ -288,23 +288,23 @@ if (idx === -1) {
   let finalTime = now;
 
   const row = [
-    now,
-    data.status || '',
-    data.tiket || '',
-    data.inet || '',
-    mergeCP(oldCP, data.cp),
-    data.penyebab || '',
-    data.perbaikan || '',
-    data.alamat || '',
-    data.odp || '',
-    data.petugas || '',
-    loc || '',
-  ];
+  finalTime, // 🔥 ini akan = now untuk tiket baru
+  data.status || '',
+  data.tiket || '',
+  data.inet || '',
+  mergeCP(oldCP, data.cp),
+  data.penyebab || '',
+  data.perbaikan || '',
+  data.alamat || '',
+  data.odp || '',
+  data.petugas || '',
+  loc || '',
+];
 
-  if (idx !== -1) {
+ if (idx !== -1) {
   let old = normalizedRows[idx];
 
-  // 🔥 JANGAN UBAH TANGGAL AWAL
+  // 🔥 tiket sama → pertahankan tanggal lama
   finalTime = old[0] || now;
 
   old[0] = finalTime;
