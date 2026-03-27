@@ -260,12 +260,25 @@ if (data._key && lastRowByUser[data._key]) {
   }
 }
 
-// 🔥 FALLBACK: kalau belum ada row user
+// 🔥 FALLBACK: cari berdasarkan INET + TIKET (biar tiket beda tetap insert)
 if (idx === -1) {
+
   for (let i = normalizedRows.length - 1; i >= 0; i--) {
-    if ((normalizedRows[i][3] || '').trim() === (data.inet || '').trim()) {
-      idx = i;
+
+    const rowInet = (normalizedRows[i][3] || '').trim();
+    const rowTiket = (normalizedRows[i][2] || '').trim();
+
+    // ✅ ambil CP dari inet yg sama (walau tiket beda)
+    if (rowInet === (data.inet || '').trim()) {
       oldCP = normalizedRows[i][4] || '';
+    }
+
+    // ✅ kalau inet + tiket sama → update
+    if (
+      rowInet === (data.inet || '').trim() &&
+      rowTiket === (data.tiket || '').trim()
+    ) {
+      idx = i;
       break;
     }
   }
