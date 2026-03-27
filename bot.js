@@ -285,6 +285,7 @@ if (idx === -1) {
 }
 
   const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
+  let finalTime = now;
 
   const row = [
     now,
@@ -301,9 +302,12 @@ if (idx === -1) {
   ];
 
   if (idx !== -1) {
-    let old = normalizedRows[idx];
+  let old = normalizedRows[idx];
 
-    old[0] = now;
+  // 🔥 JANGAN UBAH TANGGAL AWAL
+  finalTime = old[0] || now;
+
+  old[0] = finalTime;
     old[1] = data.status || old[1];
     old[4] = mergeCP(old[4], data.cp);
     old[5] = data.penyebab || old[5];
