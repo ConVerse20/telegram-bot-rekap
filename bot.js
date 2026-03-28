@@ -424,7 +424,9 @@ if (res && res.rowIndex) {
 if (emptyFields === 'ALL_EMPTY') return;
 
 // 🔥 ANTI DOUBLE MCU
-if (data.inet && lastInetByUser[key] !== data.inet) {
+if (data.inet && (
+  lastInetByUser[key] !== data.inet || msg.edit_date
+)) {
 
   // 🔥 REMINDER MCU KURANG LENGKAP
 if (emptyFields.length > 0 && !msg.edit_date) {
