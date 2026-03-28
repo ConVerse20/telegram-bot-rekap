@@ -426,6 +426,36 @@ if (emptyFields === 'ALL_EMPTY') return;
 // 🔥 ANTI DOUBLE MCU
 if (data.inet && lastInetByUser[key] !== data.inet) {
 
+  // 🔥 REMINDER MCU KURANG LENGKAP
+if (emptyFields.length > 0 && !msg.edit_date) {
+
+  const sent = await bot.sendMessage(
+    chatId,
+    `⚠️ DATA BELUM LENGKAP
+
+👤 ${getUserTag(msg)}
+
+Field kosong:
+- ${emptyFields.join('\n- ')}
+
+✏️ Silakan dilengkapi dengan cara EDIT pesan sebelumnya.`,
+    {
+      parse_mode: 'Markdown',
+      reply_to_message_id: msg.message_id
+    }
+  );
+
+  lastReminderMsg[chatId] = sent.message_id;
+}
+
+// 🔥 HAPUS REMINDER kalau sudah lengkap
+if (emptyFields.length === 0 && lastReminderMsg[chatId]) {
+  try {
+    await bot.deleteMessage(chatId, lastReminderMsg[chatId]);
+    delete lastReminderMsg[chatId];
+  } catch (e) {}
+}
+
   const res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
 
   if (res && res.rowIndex) {
