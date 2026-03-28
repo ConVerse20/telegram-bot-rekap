@@ -44,7 +44,7 @@ const lastLocationByUser = {};
 const lastRowByChat = {};
 
 // 🔥 TRACK REMINDER MESSAGE
-const lastReminderMsg = {};
+const lastReminderMsgByUser = {};
 
 function clean(v) {
   if (!v) return '';
@@ -309,6 +309,7 @@ if (idx === -1) {
 
   old[0] = finalTime;
     old[1] = data.status || old[1];
+   old[2] = data.tiket || old[2]; // 🔥 FIX TIKET
     old[4] = mergeCP(old[4], data.cp);
     old[5] = data.penyebab || old[5];
     old[6] = data.perbaikan || old[6];
@@ -346,20 +347,34 @@ bot.on('edited_message', handleMsg);
 
 async function handleMsg(msg) {
   try {
-    if (msg.text && msg.text.startsWith('/cek')) return;
 
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const key = `${chatId}_${userId}`;
+
+    // 🔥 ANTI DOUBLE EDIT TRIGGER (PER MESSAGE)
+    if (!global.lastProcessedEdit) global.lastProcessedEdit = {};
+
+    const editKey = `${chatId}_${msg.message_id}`;
+
+    if (msg.edit_date && global.lastProcessedEdit[editKey] === msg.edit_date) {
+      return;
+    }
+
+    if (msg.edit_date) {
+      global.lastProcessedEdit[editKey] = msg.edit_date;
+    }
+
+    if (msg.text && msg.text.startsWith('/cek')) return;
 
     lastUser[chatId] = userId;
 
     const locNow = getLocation(msg);
 
     if (locNow) {
-  lastLocation[chatId] = locNow; // tetap (jangan dihapus)
-  lastLocationByUser[key] = locNow; // 🔥 tambahan
-}
+      lastLocation[chatId] = locNow;
+      lastLocationByUser[key] = locNow;
+    }
 
     addBuffer(chatId, msg);
     await delay(1000);
@@ -447,14 +462,14 @@ Field kosong:
     }
   );
 
-  lastReminderMsg[chatId] = sent.message_id;
+  lastReminderMsgByUser[key] = sent.message_id;
 }
 
 // 🔥 HAPUS REMINDER kalau sudah lengkap
-if (emptyFields.length === 0 && lastReminderMsg[chatId]) {
+if (emptyFields.length === 0 && lastReminderMsgByUser[key]) {
   try {
-    await bot.deleteMessage(chatId, lastReminderMsg[chatId]);
-    delete lastReminderMsg[chatId];
+    await bot.deleteMessage(chatId, lastReminderMsgByUser[key]);
+    delete lastReminderMsgByUser[key];
   } catch (e) {}
 }
 
@@ -499,10 +514,10 @@ if (!data.inet && !data.tiket) {
       await bot.sendMessage(chatId, '🔄 Data berhasil di-update ke Google Sheet ✅');
     }
 
-    if (emptyFields.length === 0 && lastReminderMsg[chatId]) {
+    if (emptyFields.length === 0 && lastReminderMsgByUser[key]) {
       try {
-        await bot.deleteMessage(chatId, lastReminderMsg[chatId]);
-        delete lastReminderMsg[chatId];
+        await bot.deleteMessage(chatId, lastReminderMsgByUser[key]);
+        delete lastReminderMsgByUser[key];
       } catch (e) {}
     }
 
@@ -523,7 +538,7 @@ Field kosong:
         }
       );
 
-      lastReminderMsg[chatId] = sent.message_id;
+      lastReminderMsgByUser[key] = sent.message_id;
     }
 
   } // ✅ tutup IF dalam
