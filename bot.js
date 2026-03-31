@@ -428,7 +428,16 @@ if (res && res.rowIndex) {
 }
 
     const data = parseMCU(mcuText);
-    // 🔥 VALIDASI WAJIB (ANTI NIBAN)
+    // 🔥 NORMALISASI TIKET
+if (/lapsung/i.test(data.tiket)) {
+  data.tiket = 'LAPSUNG';
+}
+
+// 🔥 VALIDASI
+if (!data.tiket || !data.inet) {
+  return;
+}
+  
 // 🔥 VALIDASI SUPER KETAT
 if (
   !data.tiket ||
