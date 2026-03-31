@@ -235,7 +235,11 @@ const auth = new google.auth.GoogleAuth({
 async function saveData(data, loc, isEdit = false) {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
-
+ // 🔥 VALIDASI FINAL (LAST DEFENSE)
+  if (!data.tiket || !data.inet) {
+    console.log('❌ SKIP SAVE (DATA TIDAK VALID)', data);
+    return { type: 'skip' };
+  }
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
     range: 'DATA!A:K',
@@ -425,7 +429,14 @@ if (res && res.rowIndex) {
 
     const data = parseMCU(mcuText);
     // 🔥 VALIDASI WAJIB (ANTI NIBAN)
-if (!data.tiket || !data.inet) {
+// 🔥 VALIDASI SUPER KETAT
+if (
+  !data.tiket ||
+  !data.inet ||
+  data.tiket.length < 5 ||   // tiket minimal valid
+  !/[0-9]/.test(data.tiket)  // harus ada angka
+) {
+  console.log('❌ MCU DITOLAK (TIKET INVALID)', data);
   return;
 }
     // 🔍 DEBUG
