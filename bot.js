@@ -257,6 +257,10 @@ let idx = -1;
 // ==========================
 // 1. CARI EXACT MATCH (INET + TIKET)
 // ==========================
+  // 🔥 TAMBAH DI SINI
+if (data.tiket === 'LAPSUNG') {
+  idx = -1;
+}
 for (let i = normalizedRows.length - 1; i >= 0; i--) {
 
   const rowInet = (normalizedRows[i][3] || '').trim();
@@ -437,17 +441,7 @@ if (/lapsung/i.test(data.tiket)) {
 if (!data.tiket || !data.inet) {
   return;
 }
-  
-// 🔥 VALIDASI SUPER KETAT
-if (
-  !data.tiket ||
-  !data.inet ||
-  data.tiket.length < 5 ||   // tiket minimal valid
-  !/[0-9]/.test(data.tiket)  // harus ada angka
-) {
-  console.log('❌ MCU DITOLAK (TIKET INVALID)', data);
-  return;
-}
+
     // 🔍 DEBUG
 console.log({
   tiket: data.tiket,
