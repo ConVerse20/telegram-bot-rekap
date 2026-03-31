@@ -242,102 +242,86 @@ async function saveData(data, loc, isEdit = false) {
   });
 
   const rows = res.data.values || [];
-
   const normalizedRows = rows.map(r => {
     while (r.length < 11) r.push('');
     return r;
   });
 
+  let idx = -1;
   let oldCP = '';
-let idx = -1;
 
-// 🔥 PRIORITAS: pakai row terakhir user
-if (data._key && lastRowByUser[data._key]) {
-  idx = lastRowByUser[data._key] - 1;
-
-  if (normalizedRows[idx]) {
-    oldCP = normalizedRows[idx][4] || '';
-  }
-}
-
-// 🔥 FALLBACK: cari berdasarkan INET + TIKET (biar tiket beda tetap insert)
-if (idx === -1) {
-
-  for (let i = normalizedRows.length - 1; i >= 0; i--) {
-
-    const rowInet = (normalizedRows[i][3] || '').trim();
-    const rowTiket = (normalizedRows[i][2] || '').trim();
-
-    // ✅ ambil CP dari inet yg sama (walau tiket beda)
-    if (rowInet === (data.inet || '').trim()) {
-      oldCP = normalizedRows[i][4] || '';
-    }
-
-    // ✅ kalau inet + tiket sama → update
-    if (
-      rowInet === (data.inet || '').trim() &&
-      rowTiket === (data.tiket || '').trim()
-    ) {
-      idx = i;
-      break;
+  // 🔍 Cari berdasarkan kombinasi INET + NO TIKET terlebih dahulu
+  if (data.inet && data.tiket) {
+    for (let i = normalizedRows.length - 1; i >= 0; i--) {
+      const rowInet = (normalizedRows[i][3] || '').trim();
+      const rowTiket = (normalizedRows[i][2] || '').trim();
+      if (rowInet === data.inet.trim() && rowTiket === data.tiket.trim()) {
+        idx = i;
+        oldCP = normalizedRows[i][4] || '';
+        break;
+      }
     }
   }
-}
+
+  // 🔍 Kalau belum ketemu, baru fallback cari berdasarkan INET saja
+  if (idx === -1 && data.inet) {
+    for (let i = normalizedRows.length - 1; i >= 0; i--) {
+      if ((normalizedRows[i][3] || '').trim() === data.inet.trim()) {
+        oldCP = normalizedRows[i][4] || '';
+        break;
+      }
+    }
+  }
 
   const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
-  let finalTime = now;
-
   const row = [
-  finalTime, // 🔥 ini akan = now untuk tiket baru
-  data.status || '',
-  data.tiket || '',
-  data.inet || '',
-  mergeCP(oldCP, data.cp),
-  data.penyebab || '',
-  data.perbaikan || '',
-  data.alamat || '',
-  data.odp || '',
-  data.petugas || '',
-  loc || '',
-];
+    now,
+    data.status || '',
+    data.tiket || '',
+    data.inet || '',
+    mergeCP(oldCP, data.cp),
+    data.penyebab || '',
+    data.perbaikan || '',
+    data.alamat || '',
+    data.odp || '',
+    data.petugas || '',
+    loc || '',
+  ];
 
- if (idx !== -1) {
-  let old = normalizedRows[idx];
-
-  // 🔥 tiket sama → pertahankan tanggal lama
-  finalTime = old[0] || now;
-
-  old[0] = finalTime;
+  // ✅ Jika ketemu baris lama → update
+  if (idx !== -1) {
+    const old = normalizedRows[idx];
     old[1] = data.status || old[1];
-   old[2] = data.tiket || old[2]; // 🔥 FIX TIKET
+    old[2] = data.tiket || old[2];
+    old[3] = data.inet || old[3];
     old[4] = mergeCP(old[4], data.cp);
     old[5] = data.penyebab || old[5];
     old[6] = data.perbaikan || old[6];
     old[7] = data.alamat || old[7];
     old[8] = data.odp || old[8];
     old[9] = data.petugas || old[9];
-
     if (loc) old[10] = loc;
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
       range: `DATA!A${idx + 1}:K${idx + 1}`,
       valueInputOption: 'RAW',
-      resource: { values: [old] }
+      resource: { values: [old] },
     });
-
-    return { type: 'update', rowIndex: idx + 1 }; // 🔥 PATCH
+    return { type: 'update', rowIndex: idx + 1 };
   }
 
+  // ✅ Kalau tidak ditemukan → insert baru
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
     range: 'DATA!A:K',
     valueInputOption: 'RAW',
-    resource: { values: [row] }
+    resource: { values: [row] },
   });
 
-  return { type: 'insert', rowIndex: rows.length + 1 }; // 🔥 PATCH
+  return { type: 'insert', rowIndex: rows.length + 1 };
 }
+
 
 // =======================
 // 🚀 MAIN
