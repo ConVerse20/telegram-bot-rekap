@@ -135,7 +135,7 @@ function addBuffer(chatId, msg) {
 // 🧠 PARSER
 // =======================
 function get(label, txt) {
-  const r = new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i');
+  const r = new RegExp(`${label}\\s*:?\\s*([^\\n]*)`, 'i');
   const m = txt.match(r);
   if (!m) return '';
 
@@ -309,7 +309,13 @@ if (idx === -1) {
   ];
 
   // ✅ Jika ketemu baris lama → update
-  if (idx !== -1) {
+  // 🔥 FINAL GUARD (ANTI NIBAN TOTAL)
+if (
+  idx !== -1 &&
+  normalizedRows[idx] &&
+  (normalizedRows[idx][3] || '').trim() === (data.inet || '').trim() &&
+  (normalizedRows[idx][2] || '').trim() === (data.tiket || '').trim()
+) {
     const old = normalizedRows[idx];
     old[1] = data.status || old[1];
     old[2] = data.tiket || old[2];
@@ -418,6 +424,15 @@ if (res && res.rowIndex) {
 }
 
     const data = parseMCU(mcuText);
+    // 🔥 VALIDASI WAJIB (ANTI NIBAN)
+if (!data.tiket || !data.inet) {
+  return;
+}
+    // 🔍 DEBUG
+console.log({
+  tiket: data.tiket,
+  inet: data.inet
+});
 
     if (data.inet) {
       mcuReady[chatId] = true;
@@ -442,10 +457,8 @@ if (res && res.rowIndex) {
 // 🔥 STOP kalau kosong semua (HARUS DI ATAS)
 if (emptyFields === 'ALL_EMPTY') return;
 
-// 🔥 ANTI DOUBLE MCU
-if (data.inet && (
-  lastInetByUser[key] !== data.inet || msg.edit_date
-)) {
+// 🔥 LANGSUNG PROSES (DATA-DRIVEN, BUKAN USER-DRIVEN)
+if (data.inet && data.tiket)  {
 
   // 🔥 REMINDER MCU KURANG LENGKAP
 if (emptyFields.length > 0 && !msg.edit_date) {
