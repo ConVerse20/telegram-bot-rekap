@@ -247,31 +247,51 @@ async function saveData(data, loc, isEdit = false) {
     return r;
   });
 
-  let idx = -1;
   let oldCP = '';
+let idx = -1;
 
-  // 🔍 Cari berdasarkan kombinasi INET + NO TIKET terlebih dahulu
-  if (data.inet && data.tiket) {
-    for (let i = normalizedRows.length - 1; i >= 0; i--) {
-      const rowInet = (normalizedRows[i][3] || '').trim();
-      const rowTiket = (normalizedRows[i][2] || '').trim();
-      if (rowInet === data.inet.trim() && rowTiket === data.tiket.trim()) {
-        idx = i;
-        oldCP = normalizedRows[i][4] || '';
-        break;
-      }
+// ==========================
+// 1. CARI EXACT MATCH (INET + TIKET)
+// ==========================
+for (let i = normalizedRows.length - 1; i >= 0; i--) {
+
+  const rowInet = (normalizedRows[i][3] || '').trim();
+  const rowTiket = (normalizedRows[i][2] || '').trim();
+
+  if (
+    rowInet === (data.inet || '').trim() &&
+    rowTiket === (data.tiket || '').trim()
+  ) {
+    idx = i;
+    oldCP = normalizedRows[i][4] || '';
+    break;
+  }
+}
+
+// ==========================
+// 2. KALAU TIDAK ADA → AMBIL CP SAJA (JANGAN SET IDX)
+// ==========================
+if (idx === -1) {
+
+  const cpSet = new Set();
+
+  for (let i = normalizedRows.length - 1; i >= 0; i--) {
+
+    const rowInet = (normalizedRows[i][3] || '').trim();
+
+    if (rowInet === (data.inet || '').trim()) {
+
+      const cp = normalizedRows[i][4] || '';
+
+      cp.split('/').forEach(v => {
+        v = v.trim();
+        if (v) cpSet.add(v);
+      });
     }
   }
 
-  // 🔍 Kalau belum ketemu, baru fallback cari berdasarkan INET saja
-  if (idx === -1 && data.inet) {
-    for (let i = normalizedRows.length - 1; i >= 0; i--) {
-      if ((normalizedRows[i][3] || '').trim() === data.inet.trim()) {
-        oldCP = normalizedRows[i][4] || '';
-        break;
-      }
-    }
-  }
+  oldCP = Array.from(cpSet).join(' / ');
+}
 
   const now = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
   const row = [
