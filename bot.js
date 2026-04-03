@@ -455,7 +455,6 @@ console.log({
     }
 
     // 🔥 PATCH SHARELOK
-  / 🔥 AMBIL SHARELOK HANYA DARI MESSAGE SEKARANG
 let finalLoc = '';
 
 const locFromBuffer = tempBuffer
@@ -513,7 +512,12 @@ if (emptyFields.length === 0 && lastReminderMsgByUser[key]) {
     delete lastReminderMsgByUser[key];
   } catch (e) {}
 }
+// 🔥 DEBUG SHARELOK
+if (!finalLoc) {
+  console.log('📍 Tidak ada sharelok baru, skip update lokasi');
+}
 
+const res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
   const res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
 
   if (res && res.rowIndex) {
