@@ -414,7 +414,7 @@ async function handleMsg(msg) {
   // 🔥 hanya proses kalau BENAR2 sharelok
   if (locOnly && lastInetByUser[key]) {
 
-    const res = await saveData(
+    let res = await saveData(
   { inet: lastInetByUser[key], _key: key },
   locOnly,
   false
@@ -511,8 +511,8 @@ if (!finalLoc) {
   console.log('📍 Tidak ada sharelok baru, skip update lokasi');
 }
 
-const res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
-  const res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
+let res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
+  let res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
 
   if (res && res.rowIndex) {
     lastRowByChat[chatId] = res.rowIndex;
@@ -536,7 +536,7 @@ if (!data.inet && !data.tiket) {
 
   if (lastRowByUser[key] && lastLocationByUser[key]) {
 
-    const res = await saveData(
+    let res = await saveData(
       data,
       finalLoc,
       !!msg.edit_date
