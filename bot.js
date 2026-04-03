@@ -469,13 +469,7 @@ if (locFromBuffer) {
   lastLocationByUser[key] = finalLoc;
 }
 
-    const locFromBuffer = tempBuffer
-      ?.map(m => getLocation(m))
-      .find(v => v);
-
-    if (locFromBuffer) finalLoc = locFromBuffer;
-
-    const emptyFields = getEmptyFields(data);
+const emptyFields = getEmptyFields(data);
 
 // 🔥 STOP kalau kosong semua (HARUS DI ATAS)
 if (emptyFields === 'ALL_EMPTY') return;
