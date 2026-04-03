@@ -455,10 +455,20 @@ console.log({
     }
 
     // 🔥 PATCH SHARELOK
-    let finalLoc =
-  lastLocationByUser[key] ||   // 🔥 prioritas per user
-  lastLocation[chatId] ||      // fallback per chat
-  '';
+  / 🔥 AMBIL SHARELOK HANYA DARI MESSAGE SEKARANG
+let finalLoc = '';
+
+const locFromBuffer = tempBuffer
+  ?.map(m => getLocation(m))
+  .find(v => v);
+
+if (locFromBuffer) {
+  finalLoc = locFromBuffer;
+
+  // simpan ke cache kalau memang ada kiriman baru
+  lastLocation[chatId] = finalLoc;
+  lastLocationByUser[key] = finalLoc;
+}
 
     const locFromBuffer = tempBuffer
       ?.map(m => getLocation(m))
