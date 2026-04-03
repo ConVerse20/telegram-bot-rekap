@@ -511,7 +511,7 @@ if (!finalLoc) {
   console.log('📍 Tidak ada sharelok baru, skip update lokasi');
 }
 
-let res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
+
   let res = await saveData({ ...data, _key: key }, finalLoc, !!msg.edit_date);
 
   if (res && res.rowIndex) {
