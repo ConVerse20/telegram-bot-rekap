@@ -39,6 +39,7 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 const lastRowByUser = {};
 const lastInetByUser = {};
 const lastLocationByUser = {};
+const lastMCUByUser = {};
 
 // 🔥 PATCH CHAT BASE (BIAR GA ERROR)
 const lastRowByChat = {};
@@ -603,7 +604,7 @@ Field kosong:
 
 // ✅ BARU catch
 } catch (err) {
-  console.log(err);
+  console.log('❌ ERROR:', err.message);
 }
 }
 
@@ -656,8 +657,8 @@ bot.onText(/^\/cek (.+)/i, async (msg, match) => {
     await bot.sendMessage(chatId, text.trim());
 
   } catch (err) {
-    console.log(err);
-  }
+  console.log('❌ ERROR:', err.message);
+}
 });
 
 console.log('🚀 FINAL FIX TANPA MERUBAH FLOW');
