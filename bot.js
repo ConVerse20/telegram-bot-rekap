@@ -413,27 +413,33 @@ async function handleMsg(msg) {
 
   const locOnly = getLocation(msg);
 
-  // 🔥 hanya proses kalau BENAR2 sharelok
- const lastMCU = lastMCUByUser[key];
+  const lastMCU = lastMCUByUser[key];
 
-if (locOnly && lastMCU) {
-
-  let res = await saveData(
-    { 
-      inet: lastMCU.inet,
-      tiket: lastMCU.tiket
-    },
-    locOnly,
-    false
-  );
-
-  if (res && res.rowIndex) {
-    lastRowByUser[key] = res.rowIndex;
-    lastRowByChat[chatId] = res.rowIndex;
+  // ❌ kalau bukan pengirim MCU → tolak
+  if (locOnly && !lastMCU) {
+    console.log('❌ Sharelok ditolak (tidak ada MCU dari user ini)');
+    return;
   }
 
-  await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
-}
+  // ✅ kalau valid → lanjut save
+  if (locOnly && lastMCU) {
+
+    let res = await saveData(
+      { 
+        inet: lastMCU.inet,
+        tiket: lastMCU.tiket
+      },
+      locOnly,
+      false
+    );
+
+    if (res && res.rowIndex) {
+      lastRowByUser[key] = res.rowIndex;
+      lastRowByChat[chatId] = res.rowIndex;
+    }
+
+    await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+  }
 
   return;
 }
