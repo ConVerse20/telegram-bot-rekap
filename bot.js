@@ -414,7 +414,9 @@ async function handleMsg(msg) {
   const locOnly = getLocation(msg);
 
   // 🔥 hanya proses kalau BENAR2 sharelok
-  if (locOnly && lastInetByUser[key]) {
+ const lastMCU = lastMCUByUser[key];
+
+if (locOnly && lastMCU) {
 
     let res = await saveData(
   { inet: lastInetByUser[key], _key: key },
@@ -443,6 +445,11 @@ if (/lapsung/i.test(data.tiket)) {
 if (!data.tiket || !data.inet) {
   return;
 }
+    // 🔥 SIMPAN MCU PER USER (WAJIB)
+lastMCUByUser[key] = {
+  inet: data.inet,
+  tiket: data.tiket
+};
 
     // 🔍 DEBUG
 console.log({
