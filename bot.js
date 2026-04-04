@@ -368,7 +368,9 @@ async function handleMsg(msg) {
 
     const chatId = msg.chat.id;
     const userId = msg.from.id;
-    const key = `${chatId}_${userId}`;
+    const key = msg.chat.type.includes('group')
+  ? `${chatId}`        // 🔥 grup pakai chatId saja
+  : `${chatId}_${userId}`; // japri tetap
 
     // 🔥 ANTI DOUBLE EDIT TRIGGER (PER MESSAGE)
     if (!global.lastProcessedEdit) global.lastProcessedEdit = {};
