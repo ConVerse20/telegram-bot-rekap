@@ -418,19 +418,22 @@ async function handleMsg(msg) {
 
 if (locOnly && lastMCU) {
 
-    let res = await saveData(
-  { inet: lastInetByUser[key], _key: key },
-  locOnly,
-  false
-);
+  let res = await saveData(
+    { 
+      inet: lastMCU.inet,
+      tiket: lastMCU.tiket
+    },
+    locOnly,
+    false
+  );
 
-if (res && res.rowIndex) {
-  lastRowByUser[key] = res.rowIndex;
-  lastRowByChat[chatId] = res.rowIndex;
-}
-
-    await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+  if (res && res.rowIndex) {
+    lastRowByUser[key] = res.rowIndex;
+    lastRowByChat[chatId] = res.rowIndex;
   }
+
+  await bot.sendMessage(chatId, '📍 sharelok berhasil di-update ke Google Sheet ✅');
+}
 
   return;
 }
